@@ -1,0 +1,449 @@
+# jersa_test_framework — baza wiedzy
+
+> Dziennik wiedzy z budowy frameworka testowego.
+> Dwa cele: **materiał na rozmowy rekrutacyjne (SDET)** oraz **mapa do budowania kolejnych frameworków**.
+>
+> Zasada zapisu: przy każdej decyzji i praktyce zapisuję nie tylko *co*, ale przede wszystkim *dlaczego*.
+
+---
+
+## 1. Cel i zakres
+
+- **Cel:** kompletny framework testowy na własnym sklepie jako portfolio SDET (Python, Playwright, API, GitHub Actions, AWS).
+- **System testowany:** jersa-storefront (`ironz1/jersa-storefront`, branch `main`)
+  - Frontend: Next.js 16 (App Router), React 19, TypeScript, Tailwind 4, Motion
+  - API: BFF w Route Handlers — `/api/commerce/*` (koszyk, wishlist, wyszukiwarka, opinie, zamówienia, płatność PayU) i `/api/admin/*` (po zalogowaniu). Brak OpenAPI.
+  - Baza: Prisma 6 — SQLite lokalnie, Neon Postgres na Vercelu
+  - Hosting: Vercel Hobby; płatności PayU (na razie mock)
+  - Istniejące testy: Vitest (65 jednostkowych), Playwright w TS (koszyk, kasa, admin)
+- **Stack frameworka:** Python, pytest, Playwright, requests, psycopg2, jsonschema, pytest-html, pytest-xdist, ruff
+- **Cele nauki:** testy na wielu poziomach, Docker, CI/CD (GitHub Actions), AWS
+- **Poza zakresem (na teraz):** zmiany architektury sklepu, Pact, wydzielony backend (Etap 8), Azure DevOps / GitLab CI
+
+### Poziomy testów
+
+| Poziom | Narzędzie | Co sprawdza |
+|---|---|---|
+| Jednostkowe (istnieją) | Vitest | Logikę w izolacji |
+| Kontraktu | jsonschema | Kształt odpowiedzi API: pola, typy, błędy |
+| API | pytest, requests | Endpointy, statusy, błędy, autoryzację admina |
+| Weryfikacja bazy | psycopg2, SQL | Stan bazy po wywołaniach API, integralność |
+| E2E | Playwright (Python) | Kluczowe przepływy (koszyk, kasa) |
+
+Zasada: im wyżej w piramidzie, tym mniej scenariuszy. Markery `smoke`, `regression`, `contract` przecinają poziomy.
+
+---
+
+## 2. Mapa procesu (etapy wdrożenia)
+
+Każdy etap: co zrobiłem → czego się nauczyłem → linki do ADR / praktyk.
+
+- [x] **Etap 0 — Przygotowanie (~0,5 dnia):** przełączanie Prismy SQLite ↔ Postgres, lista endpointów i przykładowych odpowiedzi, seed danych
+- [ ] **Etap 1 — Sklep w Dockerze (1–2 dni):** Dockerfile multi-stage (standalone), docker-compose: app + postgres, healthchecki, migracje i seed
+- [ ] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
+- [ ] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E — ok. 30–50 niezależnych testów
+- [ ] **Etap 4 — Dane i sprzątanie (~1 dzień):** prefiks uuid, teardown po ID, równoległość (pytest-xdist)
+- [ ] **Etap 5 — CI (1–2 dni):** bramka na PR sklepu (główny trigger), push/PR w repo testów, nightly regression, smoke po deployu, raporty i trace jako artefakty — patrz ADR-005
+- [ ] **Etap 6 — AWS (3–5 dni, osobno):** budżet i alerty, ECR (OIDC), RDS, App Runner + VPC connector
+- [ ] **Etap 7 — Dokumentacja (0,5–1 dnia):** README w obu repo, diagram, jak dodać schemat i test
+- [ ] **Etap 8 — (opcjonalny) Wydzielenie backendu:** osobne repo, OpenAPI, ewentualnie Pact
+
+Priorytet: etapy 0–5 dają kompletne portfolio bez kosztów AWS.
+
+### Notatki z etapów
+
+### Etap 0 — 2026-10-27 → 2026-10-27
+
+**Prisma: SQLite ↔ Postgres**
+- `DATABASE_URL` wybiera bazę, ale provider w commitowanym `prisma/schema.prisma` jest zawsze `sqlite` — sam URL Postgresa nie wystarczy (Prisma padnie na niezgodności providera).
+- Przełącznik jest dwuetapowy:
+  1. **Silnik sklepu** (`src/lib/commerce-mode.ts`): `COMMERCE=own` → OwnCommerce; `COMMERCE=mock` → MockCommerce (nawet przy Postgresie); bez `COMMERCE`, ale z URL `postgres://` / `postgresql://` (`DATABASE_URL`, `POSTGRES_PRISMA_URL` lub `POSTGRES_URL`) → OwnCommerce.
+  2. **Provider Prismy** (`scripts/prepare-database.mjs`, odpalany w `npm run build`): URL nie-Postgres → zostaje SQLite; URL Postgres → kopia schematu z `provider = "postgresql"` do gitignore'owanego `prisma/schema.postgres.prisma` → `prisma generate` → `db push` → `seed-catalog.ts`.
+- `db push` i seed idą na URL bezpośredni: `DATABASE_URL_UNPOOLED` lub `POSTGRES_URL_NON_POOLING`, w przeciwnym razie `DATABASE_URL`.
+- **Brak `prisma/migrations`** — schemat przez `db push`, nie `migrate`.
+- Pułapka: lokalny `file:./prisma/dev.db` ląduje w `prisma/prisma/dev.db` (ścieżka względem katalogu schematu).
+
+**Konfiguracja dla Dockera / pytest**
+```
+COMMERCE=own
+DATABASE_URL=postgresql://jersa:jersa@postgres:5432/jersa
+```
+Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs` (lub ręcznie: rewrite providera + `db push` + seed).
+
+**Granice kontraktu API**
+- Katalog (home, PDP, kategorie) to React Server Components — **brak REST GET produktu**. Kontrakt API obejmuje tylko BFF `/api/commerce/*`; katalog testujemy przez E2E.
+- Ciasteczka (httpOnly, `path=/`, `SameSite=Lax`):
+
+  | Cookie | Rola |
+  |---|---|
+  | `jersa_cart` | UUID koszyka, tworzone przy pierwszym GET/POST cart |
+  | `jersa_wish` | UUID przechowalni (wishlist) |
+
+- Błędy: `{ "error": "<polski string>" }`, status 400 (409 tylko przy admin slug) — jeden wspólny schemat błędu.
+
+**Endpointy i seed** — pełna referencja z przykładami: [`docs/api-reference.md`](docs/api-reference.md).
+- 12 endpointów BFF: koszyk (GET/POST/PATCH/DELETE), wishlist (GET/POST), search, reviews (GET/POST), orders, payu/start, payu/notify.
+- Seed: 5 produktów, **5 szt. na rozmiar**; stabilny happy path = CASTELLO rozmiar 36.
+
+**Wnioski dla frameworka**
+- **Izolacja przez sesję:** koszyk i wishlist są per ciasteczko → świeży klient HTTP (nowa sesja) na test daje izolację za darmo.
+- **Stan magazynowy to zasób współdzielony:** każde zamówienie zdejmuje stan; przy 5 szt. równoległe testy na CASTELLO 36 wyczerpią go po 5 zamówieniach → teardown musi przywracać stan (SQL) albo testy muszą rozkładać się na różne rozmiary.
+- **Opinie nie mają DELETE:** teardown przez SQL; autor z prefiksem uuid, żeby sprzątać tylko swoje.
+- **Kontrakt:** `Product` powtarza się w cart, wishlist i search → jedna definicja współdzielona (`$ref`); `customFit` i `sizeSurcharge` opcjonalne; jeden schemat błędu.
+- **PayU mock bez podpisu:** można testować idempotencję (`payu/start` ten sam redirect, drugi `COMPLETED` → `duplicate: true`) i przejścia statusów.
+
+**Implikacje dla Etapu 1 (Docker)**
+- W sklepie nie ma `output: "standalone"` ani Dockerfile → trzeba dodać `output: "standalone"` w `next.config.ts`.
+- Multi-stage: deps → build. `prepare-database` przy buildzie wymaga Postgresa → push i seed przenieść do entrypointu.
+- Compose: `postgres:16` + app z `COMMERCE=own` i `DATABASE_URL=postgresql://...`.
+- Entrypoint: `node scripts/prepare-database.mjs`, potem `node server.js` (standalone).
+- Healthchecki: db → `pg_isready`; app → `GET /api/commerce/search?q=castello`, aż wróci CASTELLO (dowód, że seed przeszedł).
+- Obraz musi powtarzać generate + push + seed przy starcie (Vercel robi to w buildzie), bo commitowany schemat to SQLite.
+
+<!--
+### Etap N — <data rozpoczęcia> → <data zakończenia>
+- **Zrobione:**
+- **Nauczyłem się:**
+- **Powiązane:** ADR-001, ...
+-->
+
+### Ryzyka (z założeń, do weryfikacji w trakcie)
+
+| Temat | Uwaga |
+|---|---|
+| Prisma: SQLite vs Postgres | ✅ Wyjaśnione (Etap 0): `COMMERCE=own` + URL Postgres + `prepare-database.mjs` przy starcie |
+| Konteneryzacja Next.js | Największe ryzyko techniczne etapów 0–1 |
+| Koszty AWS | RDS i App Runner płatne — budżet, alerty, wyłączanie stagingu |
+| Deploy App Runnera | Asynchroniczny — smoke musi czekać na status RUNNING |
+| RDS | Prywatny; weryfikacja bazy na Postgresie z Dockera, na stagingu przez API |
+| Wywołania między repo | `repository_dispatch` i checkout prywatnego repo wymagają PAT lub GitHub App; `GITHUB_TOKEN` działa tylko w obrębie jednego repo |
+| Cron w GitHub Actions | Chodzi w UTC — `0 2 * * *` to 3:00/4:00 czasu polskiego; godzinę trzeba przeliczyć |
+| Czas budowy obrazu sklepu w CI | Kilka minut na przebieg; później cache warstw lub gotowy obraz z GHCR |
+| Vercel preview | Deployment Protection — sprawdzić bypass dla testów |
+| Brak endpointów kasujących | Sprzątanie zamówień, płatności i opinii przez SQL |
+| Stan magazynowy (5 szt./rozmiar) | Zamówienia zdejmują stan — równoległe testy mogą go wyczerpać; teardown przywraca stan lub testy używają różnych rozmiarów |
+| Brak migracji (`db push`) | Zmiana schematu w sklepie może cicho zepsuć zapytania SQL w testach DB |
+
+---
+
+## 3. Architektura
+
+### Środowisko testowe (gdzie co działa)
+
+Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
+
+```
+┌──────────── Mój komputer / runner CI ────────────┐
+│                                                  │
+│  pytest (IDE, venv)  ──HTTP──► :3000 ─┐  Docker  │
+│   - API (requests)                    ▼          │
+│   - E2E (Playwright)          app: sklep Next.js │
+│   - DB (psycopg2) ──SQL──► :5432 ─┐   │ SQL      │
+│                                   ▼   ▼          │
+│                              postgres:16         │
+└──────────────────────────────────────────────────┘
+```
+
+- **W Dockerze jest tylko SUT:** sklep + Postgres. Framework działa **poza** Dockerem, na hoście (IDE, terminal, runner CI) — łatwe debugowanie, breakpointy, widoczna przeglądarka.
+- **Uruchomiony Docker = prywatna instancja sklepu** — jak mały staging na laptopie, z czystą bazą przy każdym starcie.
+- **Wystawianie portów** (`ports: ["3000:3000"]` w `docker-compose.yml`, format `host:kontener`): sklep widoczny jako `localhost:3000`, baza jako `localhost:5432`. Bez `ports` nic spoza Dockera nie widzi kontenera.
+- **Wewnątrz Dockera** kontenery rozmawiają po nazwie serwisu (`postgres:5432`), nie przez `localhost`.
+- **Te same testy, różne cele:** testy znają tylko `BASE_URL` z `.env`. Zmiana jednej zmiennej przełącza Docker ↔ staging.
+
+| | Docker lokalnie | Staging (Vercel) |
+|---|---|---|
+| Kto stawia | ja, `docker compose up` | Vercel, po deployu |
+| Dane na starcie | zawsze te same (seed) | to, co zostało po poprzednich testach i ludziach |
+| Silnik bazy | Postgres | Postgres (Neon) |
+| Testy DB (psycopg2) | tak, bezpośrednio | nie — stan sprawdzamy przez API |
+| Co sprawdza | czy kod sklepu działa | czy działa wdrożona wersja |
+| Kiedy | codziennie + CI na push | nightly regression + smoke po deployu |
+
+**Jeden przebieg:** `docker compose up` (Postgres → sklep → schemat + seed) → healthcheck (`/api/commerce/search?q=castello` zwraca CASTELLO) → `pytest` → `docker compose down -v` (wszystko znika).
+
+**Docker ≠ CI.** Docker odpowiada na pytanie *jak* postawić środowisko; CI (GitHub Actions) — *kiedy* i *co* uruchomić. CI używa Dockera jako narzędzia i powtarza te same komendy co lokalnie, dlatego Etap 1 (Docker) jest przed Etapem 5 (CI).
+
+### CI — jak to działa (GitHub Actions)
+
+- **Runner:** po zdarzeniu (push, PR, cron) GitHub uruchamia świeżą maszynę wirtualną (Ubuntu z Dockerem, Pythonem, gitem), wykonuje kroki z `.github/workflows/*.yml` i niszczy ją po zakończeniu. Każdy przebieg od zera.
+- **Docker i pytest działają na tym samym runnerze** → `localhost:3000` działa jak na laptopie. Mapa środowiska pasuje do CI 1:1 — „mój komputer” zamienia się na runner.
+
+```
+zdarzenie (PR sklepu / push testów)
+  → runner: czyste Ubuntu
+    1. checkout repo testów
+    2. checkout repo sklepu (gałąź PR-a lub main; prywatne → token)
+    3. docker compose up --build --wait   (sklep + Postgres + seed, czeka na healthchecki)
+    4. setup Pythona, pip install, playwright install --with-deps chromium
+    5. pytest                             (localhost:3000, :5432)
+    6. upload raportu, trace, wideo       (if: always() — także po porażce)
+    7. docker compose down -v
+  → status ✅/❌ przy PR/commicie + artefakty + logi
+```
+
+- **Wynik:** status przy PR (z branch protection czerwony blokuje merge), artefakty w zakładce Actions (raport HTML, trace Playwrighta → `playwright show-trace`, wideo), logi kroków (warto dodać `docker compose logs` przy porażce).
+- **Wyzwalacze:** ADR-005.
+- **Dlaczego Docker także przy zmianie w repo testów:** testy to też kod. Na znanej wersji sklepu z czystym seedem zmienia się tylko jedna rzecz — porażka wskazuje na zmianę w testach. Na stagingu porażka byłaby niejednoznaczna (zmienione dane? nowy deploy? staging leży?), a testy DB w ogóle by nie działały.
+
+### Mapowanie środowisk (klasyczne DEV/INT/STG/PROD → jersa)
+
+| Klasycznie | jersa | Rola |
+|---|---|---|
+| DEV | Docker lokalnie | praca developera, pisanie testów |
+| INT | Docker w CI (GitHub Actions) | bramka na PR sklepu + testy na push w repo testów |
+| STG | staging na Vercelu (później AWS) | nightly regression, smoke po deployu |
+| PROD | produkcja na Vercelu | klienci |
+
+- Tymczasowe środowisko (Docker w CI) przejmuje rolę INT **tylko dlatego, że system jest mały**: jedna aplikacja, jedyna zależność zewnętrzna (PayU) na mocku.
+- INT jako wspólne środowisko wraca do gry, gdy jest wiele serwisów różnych zespołów, prawdziwe integracje zewnętrzne (sandbox płatności, SSO, kolejki), proces wdrożenia z migracjami na trwałej bazie, infrastruktura bliska produkcji. W jersa: dopiero przy Etapie 8 (wydzielony backend) — wtedy także testy kontraktowe (Pact).
+
+### Warstwy
+
+```
+<!-- diagram warstw, np.:
+tests/          → scenariusze testowe (co testujemy)
+pages/ | api/   → abstrakcje nad aplikacją (jak z nią rozmawiamy)
+core/           → konfiguracja, logowanie, klienci, utils
+-->
+```
+
+### Struktura katalogów
+
+<!-- katalog → po co istnieje -->
+
+### Przepływ wykonania testu
+
+<!-- od komendy CLI → konfiguracja → fixtures → test → teardown → raport -->
+
+---
+
+## 4. Dziennik decyzji (ADR — Architecture Decision Records)
+
+### Otwarte decyzje
+
+| Temat | Kiedy rozstrzygnąć | Dlaczego wtedy |
+|---|---|---|
+| Strategia stanu magazynowego w testach zamówień | Etap 3, przed pierwszym testem zamówienia | Potrzebny działający sklep w Dockerze (tabela stanu, czy timeout 30 min oddaje stan); problem pojawia się już przy powtarzaniu testów, nie dopiero przy równoległości |
+| Gdzie trzymać Dockerfile i `docker-compose.yml` (repo sklepu czy repo testów) | Etap 1, na starcie | Decyduje, skąd compose bierze kod sklepu i kto utrzymuje obraz |
+| Mechanizm bramki na PR sklepu: workflow sklepu sam pobiera repo testów (checkout z tokenem) czy `repository_dispatch` / reusable workflow | Etap 5 | Status musi wrócić do PR-a sklepu; `repository_dispatch` nie raportuje wyniku do PR-a automatycznie, checkout testów w workflow sklepu — tak |
+| Budowanie obrazu sklepu przy każdym przebiegu czy gotowy obraz z GHCR | Etap 5 (optymalizacja) lub Etap 6 | Gotowy obraz skraca start z minut do sekund; ten sam mechanizm posłuży do ECR w AWS |
+| Czy framework też uruchamiać w kontenerze | Najpóźniej Etap 6 (AWS) | Na start framework na hoście (debugowanie); obraz frameworka (np. `mcr.microsoft.com/playwright/python`) ma sens, gdy testy mają działać poza laptopem i CI |
+
+### ADR-001: Framework w osobnym repozytorium, w Pythonie
+- **Data:** 2026-10-26
+- **Kontekst:** sklep jest w TypeScripcie i ma już testy Playwright w TS; portfolio celuje w role Python SDET.
+- **Rozważane opcje:**
+  - A — testy w repo sklepu (TS) — blisko kodu, ale nie pokazuje Pythona
+  - B — osobne repo w Pythonie — niezależny cykl życia, testuje aplikację jak „klient z zewnątrz”
+- **Decyzja:** B.
+- **Konsekwencje:** framework testuje sklep przez HTTP, przeglądarkę i bazę — jak w firmie z osobnym zespołem QA. Koszt: synchronizacja wersji między repo (smoke po deployu, repository_dispatch).
+- **Na rozmowie:** <!-- do uzupełnienia własnymi słowami -->
+
+### ADR-002: Kontrakt API przez jsonschema, bez Pact
+- **Data:** 2026-10-26
+- **Kontekst:** API nie ma OpenAPI; frontend i backend są w jednej aplikacji Next.js.
+- **Rozważane opcje:**
+  - A — Pact (consumer-driven contracts) — wymaga dwóch niezależnych stron kontraktu
+  - B — jsonschema spisywane ręcznie z realnych odpowiedzi, `additionalProperties: false`
+- **Decyzja:** B. Pact wraca jako opcja po wydzieleniu backendu (Etap 8).
+- **Konsekwencje:** szybki start i pełna kontrola; koszt: ręczne utrzymanie schematów.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### ADR-003: Izolacja danych testowych przez prefiks uuid i teardown po ID
+- **Data:** 2026-10-26
+- **Kontekst:** staging jest współdzielony; testy mają działać równolegle (pytest-xdist) i wielokrotnie.
+- **Rozważane opcje:**
+  - A — czyszczenie całych tabel przed/po testach — proste, ale niszczy cudze dane i blokuje równoległość
+  - B — unikalny prefiks w danych każdego testu, teardown usuwa tylko własne rekordy po ID
+- **Decyzja:** B (opcjonalnie branch Neon na przebieg).
+- **Konsekwencje:** testy niezależne i powtarzalne; koszt: każda fixture tworząca dane musi umieć po sobie posprzątać (dla zamówień przez SQL — brak endpointów kasujących).
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### ADR-004: CI w GitHub Actions, AWS dopiero po działającym CI
+- **Data:** 2026-10-26
+- **Kontekst:** sklep jest na GitHubie; AWS jest celem nauki, ale kosztuje.
+- **Decyzja:** GitHub Actions jako jedyne CI (bez Azure DevOps i GitLab CI); AWS (ECR, App Runner, RDS) dopiero w Etapie 6.
+- **Konsekwencje:** etapy 0–5 dają kompletne portfolio za darmo; AWS nie blokuje postępu.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### ADR-005: Wyzwalacze CI — główna bramka na PR sklepu
+- **Data:** 2026-10-27
+- **Kontekst:** pierwotny plan (PDF z 26.10) testował sklep w CI tylko przy pushu w repo testów, nightly i po deployu — czyli zmiany w **sklepie** były sprawdzane dopiero **po** wdrożeniu na staging. Najważniejsze pytanie brzmi: czy nowy kod sklepu niczego nie psuje — i odpowiedź ma przyjść przed merge.
+- **Rozważane opcje:**
+  - A — tylko push w repo testów + nightly + smoke po deployu (plan z PDF) — błąd sklepu wykrywany dopiero na stagingu
+  - B — dodatkowo bramka na PR w repo sklepu: testy na Dockerze z kodem z gałęzi PR-a, wynik przy PR-ze
+- **Decyzja:** B. Cztery wyzwalacze:
+
+  | Trigger | Wersja sklepu | Cel testów | Po co |
+  |---|---|---|---|
+  | PR w repo **sklepu** | gałąź PR-a | Docker na runnerze | **główny:** łapie błędy sklepu przed merge |
+  | Push / PR w repo **testów** | `main` sklepu | Docker na runnerze | czy zmienione testy działają (zmienia się tylko jedna rzecz) |
+  | Nightly (cron) | staging | Vercel | pełny regression na wdrożonej wersji (bez testów DB) |
+  | Po deployu | staging | Vercel | szybki smoke: czy wdrożenie się udało |
+
+- **Konsekwencje:** w repo sklepu pojawia się workflow (architektura sklepu bez zmian); potrzebny token do odczytu prywatnego repo; czerwony wynik może blokować merge (branch protection). Koszt: dłuższy PR w sklepie o czas budowy obrazu.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+<!--
+### ADR-001: <tytuł decyzji>
+- **Data:**
+- **Kontekst:** jaki problem rozwiązuję
+- **Rozważane opcje:**
+  - A — plusy / minusy
+  - B — plusy / minusy
+- **Decyzja:** co wybrałem
+- **Konsekwencje:** co zyskuję, co tracę, kiedy wrócić do tematu
+- **Na rozmowie:** jak to wytłumaczyć w 2–3 zdaniach
+-->
+
+---
+
+## 5. Najlepsze praktyki
+
+Format: **zasada → dlaczego → przykład z mojego kodu**.
+
+### Struktura i nazewnictwo testów
+### Izolacja testów i dane testowe
+### Stabilność (selektory, oczekiwania, flaky tests)
+### Konfiguracja i środowiska (env, secrets)
+### Logowanie i raportowanie
+### Jakość kodu frameworka (typing, linting, review)
+
+---
+
+## 6. Problemy i rozwiązania
+
+<!--
+### <krótki opis problemu>
+- **Objaw:**
+- **Przyczyna:**
+- **Rozwiązanie:**
+- **Jak zapobiec:**
+- **Na rozmowie:** dobra historia do pytania „opowiedz o trudnym problemie”
+-->
+
+---
+
+## 7. Zarządzanie frameworkiem
+
+- **Wersjonowanie:** <!-- SemVer, changelog -->
+- **Proces zmian:** <!-- branching, PR, code review -->
+- **Użycie przez innych:** <!-- onboarding, dokumentacja, konwencje -->
+- **Metryki zdrowia:** <!-- czas wykonania, % flaky, liczba testów, pokrycie -->
+
+---
+
+## 8. Kroki wdrożenia (1 → n)
+
+> Kolejne istotne kroki przy budowie frameworka, w kolejności wykonania — mapa do zbudowania kolejnego frameworka od zera.
+> Format: **krok** — jedno zdanie: co i po co. Dopisywane na bieżąco.
+
+1. **Określ cel i zakres** — po co framework, co testuje, czego świadomie nie robi.
+2. **Poznaj system testowany** — stack, endpointy, baza, hosting, istniejące testy.
+3. **Ustal poziomy testów** — piramida: kontrakt, API, DB, E2E; co sprawdza każdy poziom.
+4. **Zapisz kluczowe decyzje jako ADR** — wybór języka/repo, strategia kontraktów, danych i CI.
+5. **Zidentyfikuj ryzyka** — co może zablokować projekt i jak temu zapobiec.
+6. **Rozpisz etapy wdrożenia** — kolejność prac z mierzalnym wynikiem każdego etapu.
+7. **Przygotuj dokumentację projektu** — `CLAUDE.md` (kontekst i konwencje) + `KNOWLEDGE.md` (wiedza).
+8. **Rozpoznaj konfigurację SUT** — jak system wybiera bazę, tryby i zmienne środowiskowe, żeby postawić go powtarzalnie do testów.
+9. **Wyznacz granice kontraktu API** — co jest prawdziwym API (JSON), a co tylko renderowanym UI; stan sesji (cookies) i format błędów.
+10. **Spisz referencję API i dane testowe** — endpointy z przykładowymi odpowiedziami i znany seed; to materiał na schematy kontraktów i stabilny happy path.
+11. **Znajdź współdzielone zasoby** — co testy zmieniają globalnie (np. stan magazynowy) i jak to przywracać, zanim włączysz równoległość.
+12. **Zaprojektuj środowiska testowe** — gdzie działa SUT (Docker / staging), gdzie działają testy, jak są wystawione adresy i jak przełączać cel (`BASE_URL`).
+13. **Zmapuj środowiska na potrzeby projektu** — które z DEV/INT/STG/PROD są naprawdę potrzebne; środowiska tymczasowe w CI mogą zastąpić INT przy małym systemie.
+14. **Zaplanuj wyzwalacze CI** — co, kiedy i na jakiej wersji SUT; najważniejsza jest bramka na PR aplikacji, żeby błąd nie dotarł na staging.
+15. **Zainicjalizuj repo i zrób pierwszy commit przed kodem** — `.gitignore` od startu (`.env`, raporty, cache), żeby sekrety i artefakty nigdy nie trafiły do historii.
+
+---
+
+## 9. Przygotowanie do rozmów (SDET)
+
+Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z linkiem do ADR / problemu).
+
+### Jak zapewniasz powtarzalne środowisko testowe?
+- **Odpowiedź:** konteneryzuję SUT (Docker + docker-compose): sklep i Postgres startują jedną komendą, z czystą bazą i znanym seedem na każdy przebieg. Ten sam obraz działa lokalnie, w CI (GitHub Actions) i w chmurze (AWS). Testy nie zależą od współdzielonego stagingu ani od tego, co ktoś wcześniej kliknął, i idą na tym samym silniku bazy co produkcja (Postgres, nie SQLite).
+- **Czego unikam:** „u mnie działa”, testów na współdzielonym stagingu ze zmiennymi danymi, różnic między bazą testową a produkcyjną.
+- **Dowód:** Etap 1 (Docker), notatki z Etapu 0 (Prisma SQLite ↔ Postgres), sekcja 10 — SUT, seed.
+
+### Czy środowisko INT jest zawsze potrzebne?
+- **Odpowiedź:** nie zawsze — zależy od liczby serwisów i integracji. Część roli INT (sprawdzenie, czy nowy kod jednej aplikacji działa) przejmują środowiska tymczasowe w CI: szybciej (na każdy push, nie raz na noc), bez kolejki i bez zabrudzonych danych. To podejście shift-left. INT nadal ma sens przy wielu serwisach różnych zespołów, prawdziwych integracjach zewnętrznych, testowaniu procesu wdrożenia i migracji na trwałej bazie. Między serwisami część jego roli mogą przejąć testy kontraktowe.
+- **Przykład z mojego projektu:** w jersa Docker w CI pełni rolę INT, bo to jedna aplikacja z mockowanym PayU; po wydzieleniu backendu (Etap 8) wróciłbym do wspólnego środowiska integracyjnego lub Pact.
+- **Dowód:** sekcja 3 — mapowanie środowisk.
+
+### Czym różni się Docker od CI?
+- **Odpowiedź:** Docker to sposób pakowania i uruchamiania aplikacji (*jak* postawić środowisko); CI to automat uruchamiający kroki po zdarzeniu (*kiedy* i *co* uruchomić). Są niezależne: Docker działa bez CI na laptopie, CI może działać bez Dockera. Razem dają to samo środowisko lokalnie i w pipeline — jeśli działa u mnie w Dockerze, prawie na pewno zadziała w CI.
+- **Dowód:** sekcja 3 — środowisko testowe; Etapy 1 i 5.
+
+### Jak wygląda Twój pipeline CI i kiedy uruchamiasz testy?
+- **Odpowiedź:** cztery wyzwalacze, każdy z innym celem. Główny to bramka na PR aplikacji: runner stawia sklep z gałęzi PR-a w Dockerze z czystą bazą, odpala pełny zestaw (kontrakt, API, DB, E2E), a czerwony wynik blokuje merge — błąd nie trafia na staging. Przy zmianie w samych testach uruchamiam je na `main` aplikacji, żeby zmieniała się tylko jedna rzecz. Na stagingu: nightly regression i smoke po każdym deployu. Artefakty: raport HTML, trace i wideo Playwrighta przy porażce.
+- **Pułapki, które znam:** wywołania między repo wymagają PAT/GitHub App; cron chodzi w UTC; budowa obrazu kosztuje minuty (cache / gotowy obraz z rejestru).
+- **Dowód:** ADR-005, sekcja 3 — CI.
+
+### Co to jest shift-left i jak go stosujesz?
+- **Odpowiedź:** przesuwanie testów jak najwcześniej w procesie, bo im wcześniej wykryty błąd, tym tańsza naprawa. To nie jeden krok, tylko cała oś: review wymagań → testy jednostkowe → testy lokalnie przed pushem → bramka na PR → staging → produkcja. U mnie konkretnie: przeniosłem testowanie zmian aplikacji z „po deployu na staging” na „przed merge” (bramka na PR) — to przesunięcie w lewo, ale nie pełny shift-left; wcześniej są jeszcze testy jednostkowe (Vitest) i uruchamianie testów lokalnie w Dockerze.
+- **Dowód:** ADR-005, sekcja 10 — shift-left.
+
+<!--
+### Jak zaprojektowałbyś framework od zera?
+- Odpowiedź:
+- Dowód: sekcja 3, ADR-00X
+-->
+
+---
+
+## 10. Słownik pojęć
+
+<!-- **Pojęcie:** definicja własnymi słowami -->
+
+### SUT (System Under Test)
+- **Definicja:** system, który testujemy — w odróżnieniu od narzędzi, którymi testujemy.
+- **U mnie:** SUT = sklep jersa-storefront (Next.js + API BFF + Postgres). Framework (pytest, Playwright, requests) to **nie** SUT — to narzędzie testujące.
+- **Dlaczego to rozróżnienie jest ważne:** pozwala jasno wyznaczyć granice: co kontrolujemy i stawiamy na potrzeby testów (SUT w Dockerze), a co jest zależnością zewnętrzną, którą mockujemy (PayU). Pomaga też w diagnozie porażki: błąd w SUT czy błąd w teście/frameworku?
+- **Pokrewne:** *DUT* (Device Under Test) w testach sprzętu; *AUT* (Application Under Test) — często używany zamiennie.
+
+### Seed (dane startowe)
+- **Definicja:** skrypt lub plik, który wypełnia pustą bazę znanym, przewidywalnym zestawem danych startowych.
+- **U mnie:** `fixtures/catalog.json` + `scripts/seed-catalog.ts` w sklepie → 5 produktów, 5 szt. na każdy rozmiar, 2 opinie CASTELLO. Uruchamiany przez `prepare-database.mjs` przy starcie kontenera.
+- **Dlaczego jest ważny:** testy potrzebują punktu wyjścia, który zawsze wygląda tak samo. Dzięki seedowi wiadomo, że CASTELLO kosztuje 350 zł i ma rozmiar 36 — test może na tym polegać bez tworzenia produktu.
+- **Seed vs dane tworzone przez test:**
+
+  | | Seed | Dane testu |
+  |---|---|---|
+  | Kto tworzy | skrypt przy starcie środowiska | sam test (fixture) |
+  | Kiedy | raz, przed wszystkimi testami | w trakcie testu |
+  | Co zawiera | dane referencyjne (katalog) | dane scenariusza (koszyk, zamówienie, opinia) |
+  | Sprzątanie | nie — reset całego środowiska | tak — teardown usuwa własne rekordy |
+
+- **Pułapka (seed):** testy nie powinny **zmieniać** danych seedu w sposób trwały (np. wyczerpać stanu magazynowego) — inaczej kolejny przebieg startuje z innego punktu. Patrz: otwarta decyzja o stanie magazynowym (sekcja 4).
+
+### Docker — podstawowe pojęcia
+- **Definicja:** narzędzie, które pakuje aplikację razem z jej środowiskiem (runtime, biblioteki, konfiguracja), żeby działała identycznie na każdej maszynie. Analogia: kontener transportowy — port nie musi wiedzieć, co jest w środku.
+- **Pojęcia:**
+
+  | Pojęcie | Co to jest | U mnie |
+  |---|---|---|
+  | Dockerfile | przepis na zbudowanie obrazu | jak zbudować sklep Next.js |
+  | Obraz (image) | zbudowany, niezmienny pakiet | obraz sklepu |
+  | Kontener | uruchomiony obraz (odizolowany proces) | działający sklep na porcie 3000 |
+  | docker-compose | opis kilku kontenerów działających razem | sklep + Postgres + sieć między nimi |
+  | Wystawienie portu | `host:kontener` — udostępnia port kontenera na hoście | `3000:3000`, `5432:5432` |
+  | Volume | dane, które przeżywają restart kontenera | w testach celowo usuwane (`down -v`) |
+
+- **Kontener ≠ maszyna wirtualna:** dzieli jądro systemu z hostem, więc startuje w sekundy i zużywa mało zasobów.
+
+### Ephemeral environment (środowisko tymczasowe)
+- **Definicja:** środowisko stawiane na jeden przebieg / jeden PR i niszczone po nim.
+- **U mnie:** `docker compose up` → testy → `docker compose down -v`, lokalnie i w CI. Vercel preview deployments to też środowiska tymczasowe.
+- **Dlaczego ważne:** brak kolejki do wspólnego środowiska, zawsze czysty stan, testy na każdy push.
+
+### Shift-left
+- **Definicja:** przesuwanie testów jak najwcześniej w procesie wytwarzania (w lewo na osi czasu: kod → PR → INT → STG → PROD).
+- **Dlaczego:** im wcześniej błąd zostanie wykryty, tym taniej go naprawić.
+- **Oś (od lewej):** review wymagań → testy jednostkowe → testy lokalnie przed pushem → bramka na PR → staging → produkcja.
+- **U mnie:** bramka na PR sklepu (ADR-005) — testy zmian sklepu przed merge zamiast dopiero po deployu. To przesunięcie w lewo, **nie pełny shift-left**: wcześniej są jeszcze testy jednostkowe sklepu (Vitest) i testy uruchamiane lokalnie w Dockerze przed pushem.
+
+---
+
+## 11. Źródła
+
+<!-- tytuł / link → co z tego wyniosłem -->

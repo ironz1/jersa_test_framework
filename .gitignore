@@ -1,0 +1,36 @@
+# Sekrety
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Wyniki testów
+reports/
+test-results/
+allure-results/
+allure-report/
+*.html.report
+.coverage
+htmlcov/
+
+# Playwright
+playwright-report/
+traces/
+
+# IDE / system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code — lokalne ustawienia
+.claude/settings.local.json

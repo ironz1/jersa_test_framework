@@ -1,0 +1,4 @@
+# Jednolite końce linii (LF) — skrypty uruchamiane w kontenerach i na runnerach Linux
+* text=auto eol=lf
+*.pdf binary
+*.png binary
