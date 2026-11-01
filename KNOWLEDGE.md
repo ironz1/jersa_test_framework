@@ -100,6 +100,21 @@ Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs
 - Healthchecki: db → `pg_isready`; app → `GET /api/commerce/search?q=castello`, aż wróci CASTELLO (dowód, że seed przeszedł).
 - Obraz musi powtarzać generate + push + seed przy starcie (Vercel robi to w buildzie), bo commitowany schemat to SQLite.
 
+### Etap 1 — 2026-11-01 → (w toku)
+
+**Ustalenia z repo sklepu (odczyt przez `gh`, 2026-11-01)**
+- `npm run build` = `prepare-database.mjs && next build` → na Vercelu baza jest przygotowywana **w buildzie**. W `docker build` bazy nie ma, a skrypt bez URL Postgres kończy się po cichu → klient Prismy zostałby pod SQLite. Potrzebny tryb `--generate-only`.
+- `prisma` i `tsx` są w `devDependencies` → nie ma ich w obrazie standalone. Dlatego przygotowanie bazy w osobnej usłudze `db-init` (etap `builder`), a nie w entrypoincie aplikacji.
+- Standalone nie kopiuje `public/` ani `.next/static` — trzeba ręcznie.
+- Stan magazynowy: kolumna `ProductRow.stockBySize` (JSON) per produkt → test może wstawić własny produkt z własnym stanem.
+- Ryzyko: jeśli `next build` prerenderuje strony z bazy, build w Dockerze bez bazy padnie — Grok sprawdza przed wyborem rozwiązania.
+- `jersa-storefront.vercel.app` to piaskownica bez ruchu → traktujemy jako **STG**; właściwy sklep będzie na osobnym środowisku (PROD). Push na `main` sklepu deployuje od razu (brak PR-ów).
+- Agent sklepu (Grok) czyta `AGENTS.md` → `CLAUDE.md`; zasady „nie pushuj bez polecenia”, decyzje w `CLAUDE.md` + `docs/PLAN.md`.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-01-etap-1-docker-design.md`](docs/superpowers/specs/2026-11-01-etap-1-docker-design.md) · **Notka dla Groka:** [`docs/handoff/2026-11-01-etap-1-docker.md`](docs/handoff/2026-11-01-etap-1-docker.md)
+
+> Implikacje z Etapu 0 (entrypoint z `prepare-database`) zastąpione przez usługę `db-init` — patrz projekt.
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -112,7 +127,7 @@ Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs
 | Temat | Uwaga |
 |---|---|
 | Prisma: SQLite vs Postgres | ✅ Wyjaśnione (Etap 0): `COMMERCE=own` + URL Postgres + `prepare-database.mjs` przy starcie |
-| Konteneryzacja Next.js | Największe ryzyko techniczne etapów 0–1 |
+| Konteneryzacja Next.js | Największe ryzyko techniczne etapów 0–1; konkretnie: prerender stron z bazy w `next build` (Etap 1) |
 | Koszty AWS | RDS i App Runner płatne — budżet, alerty, wyłączanie stagingu |
 | Deploy App Runnera | Asynchroniczny — smoke musi czekać na status RUNNING |
 | RDS | Prywatny; weryfikacja bazy na Postgresie z Dockera, na stagingu przez API |
@@ -191,8 +206,8 @@ zdarzenie (PR sklepu / push testów)
 |---|---|---|
 | DEV | Docker lokalnie | praca developera, pisanie testów |
 | INT | Docker w CI (GitHub Actions) | bramka na PR sklepu + testy na push w repo testów |
-| STG | staging na Vercelu (później AWS) | nightly regression, smoke po deployu |
-| PROD | produkcja na Vercelu | klienci |
+| STG | `jersa-storefront.vercel.app` — piaskownica bez ruchu (Neon); później AWS | nightly regression, smoke po deployu; zapisy dozwolone, ale baza trwała → dane testu własne i sprzątane po ID |
+| PROD | osobne środowisko właściwego sklepu (jeszcze nie istnieje) | klienci; później tylko smoke tylko do odczytu (shift-right) |
 
 - Tymczasowe środowisko (Docker w CI) przejmuje rolę INT **tylko dlatego, że system jest mały**: jedna aplikacja, jedyna zależność zewnętrzna (PayU) na mocku.
 - INT jako wspólne środowisko wraca do gry, gdy jest wiele serwisów różnych zespołów, prawdziwe integracje zewnętrzne (sandbox płatności, SSO, kolejki), proces wdrożenia z migracjami na trwałej bazie, infrastruktura bliska produkcji. W jersa: dopiero przy Etapie 8 (wydzielony backend) — wtedy także testy kontraktowe (Pact).
@@ -223,8 +238,9 @@ core/           → konfiguracja, logowanie, klienci, utils
 
 | Temat | Kiedy rozstrzygnąć | Dlaczego wtedy |
 |---|---|---|
-| Strategia stanu magazynowego w testach zamówień | Etap 3, przed pierwszym testem zamówienia | Potrzebny działający sklep w Dockerze (tabela stanu, czy timeout 30 min oddaje stan); problem pojawia się już przy powtarzaniu testów, nie dopiero przy równoległości |
-| Gdzie trzymać Dockerfile i `docker-compose.yml` (repo sklepu czy repo testów) | Etap 1, na starcie | Decyduje, skąd compose bierze kod sklepu i kto utrzymuje obraz |
+| Strategia stanu magazynowego w testach zamówień | Etap 3, przed pierwszym testem zamówienia | **Kandydat (2026-11-01):** test wstawia własny `ProductRow` (`test-<uuid>`, własne `stockBySize`), zamawia go, teardown usuwa zamówienie i produkt — seed nietknięty (ADR-003). Do potwierdzenia na działającym sklepie |
+| Dostęp testów do bazy STG (Neon) z CI | Etap 3/5 | Fixtures tworzące dane przez SQL na STG wymagają sekretu `DATABASE_URL` Neona w GitHub Actions; ADR-005 zakładał nightly bez testów DB |
+| Praca w sklepie przez PR-y zamiast pushy na `main` | Przed Etapem 5 | Bramka na PR (ADR-005) działa tylko, gdy zmiany idą przez PR; dziś push na `main` deployuje od razu |
 | Mechanizm bramki na PR sklepu: workflow sklepu sam pobiera repo testów (checkout z tokenem) czy `repository_dispatch` / reusable workflow | Etap 5 | Status musi wrócić do PR-a sklepu; `repository_dispatch` nie raportuje wyniku do PR-a automatycznie, checkout testów w workflow sklepu — tak |
 | Budowanie obrazu sklepu przy każdym przebiegu czy gotowy obraz z GHCR | Etap 5 (optymalizacja) lub Etap 6 | Gotowy obraz skraca start z minut do sekund; ten sam mechanizm posłuży do ECR w AWS |
 | Czy framework też uruchamiać w kontenerze | Najpóźniej Etap 6 (AWS) | Na start framework na hoście (debugowanie); obraz frameworka (np. `mcr.microsoft.com/playwright/python`) ma sens, gdy testy mają działać poza laptopem i CI |
@@ -257,6 +273,7 @@ core/           → konfiguracja, logowanie, klienci, utils
   - B — unikalny prefiks w danych każdego testu, teardown usuwa tylko własne rekordy po ID
 - **Decyzja:** B (opcjonalnie branch Neon na przebieg).
 - **Konsekwencje:** testy niezależne i powtarzalne; koszt: każda fixture tworząca dane musi umieć po sobie posprzątać (dla zamówień przez SQL — brak endpointów kasujących).
+- **Doprecyzowanie (2026-11-01):** izolacja na poziomie **testu**, nie zestawu. Reset bazy przed zestawem odrzucony: na trwałym STG koliduje z równoległymi przebiegami (nightly + smoke) i workerami xdist, a na PROD byłby niemożliwy. W Dockerze świeża baza per przebieg przychodzi za darmo (`down -v`).
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
 ### ADR-004: CI w GitHub Actions, AWS dopiero po działającym CI
@@ -282,6 +299,16 @@ core/           → konfiguracja, logowanie, klienci, utils
   | Po deployu | staging | Vercel | szybki smoke: czy wdrożenie się udało |
 
 - **Konsekwencje:** w repo sklepu pojawia się workflow (architektura sklepu bez zmian); potrzebny token do odczytu prywatnego repo; czerwony wynik może blokować merge (branch protection). Koszt: dłuższy PR w sklepie o czas budowy obrazu.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### ADR-006: Dockerfile w repo sklepu, compose w repo testów
+- **Data:** 2026-11-01
+- **Kontekst:** testy potrzebują obrazu sklepu; sklep zmienia się szybko i pisze go inny agent (Grok).
+- **Rozważane opcje:**
+  - A — Dockerfile i compose w repo testów — pełna kontrola bez zmian w sklepie, ale Dockerfile po cichu się psuje przy zmianach sklepu (Node, zależności, build), a bramka na PR wymaga synchronizacji dwóch repo
+  - B — Dockerfile w repo sklepu, compose w repo testów — obraz zmienia się w tym samym commicie co kod; PR sklepu buduje obraz z własnego Dockerfile
+- **Decyzja:** B. Przygotowanie bazy w osobnej usłudze `db-init` (etap `builder`), aplikacja jako czysty obraz standalone.
+- **Konsekwencje:** zmiany w sklepie wprowadza Grok według notki (`docs/handoff/`), zasady trafiają do `CLAUDE.md` sklepu; repo testów niczego w sklepie nie commituje. Później obraz publikuje CI sklepu (GHCR/ECR).
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
 <!--
@@ -353,6 +380,7 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 13. **Zmapuj środowiska na potrzeby projektu** — które z DEV/INT/STG/PROD są naprawdę potrzebne; środowiska tymczasowe w CI mogą zastąpić INT przy małym systemie.
 14. **Zaplanuj wyzwalacze CI** — co, kiedy i na jakiej wersji SUT; najważniejsza jest bramka na PR aplikacji, żeby błąd nie dotarł na staging.
 15. **Zainicjalizuj repo i zrób pierwszy commit przed kodem** — `.gitignore` od startu (`.env`, raporty, cache), żeby sekrety i artefakty nigdy nie trafiły do historii.
+16. **Zamów obraz aplikacji u jej właściciela** — Dockerfile przy kodzie aplikacji, compose przy testach; wymagania przekazane notką z kryteriami akceptacji, a stałe zasady zapisane w instrukcjach repo aplikacji.
 
 ---
 
