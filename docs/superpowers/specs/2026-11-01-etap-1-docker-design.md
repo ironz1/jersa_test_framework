@@ -1,7 +1,7 @@
 # Etap 1 — sklep w Dockerze (projekt)
 
 - **Data:** 2026-11-01
-- **Status:** zatwierdzony w rozmowie, do planu
+- **Status:** wdrożony lokalnie (2026-11-05); zostaje push sklepu i deploy na Vercelu
 - **Powiązane:** `KNOWLEDGE.md` ADR-003, ADR-005, ADR-006; notka dla Groka: `docs/handoff/2026-11-01-etap-1-docker.md`
 
 ## Po co
@@ -76,6 +76,8 @@ Jeśli `next build` prerenderuje strony katalogu (RSC, ISR) i czyta przy tym baz
 - (a) build z dostępem do Postgresa (np. tymczasowa baza w buildzie) — bez zmian w aplikacji, ale cięższy build;
 - (b) wymuszenie renderowania w runtime dla stron czytających bazę — zmiana w aplikacji, wymaga zgody człowieka;
 - (c) inne rozwiązanie Groka — opisane przed wdrożeniem.
+
+**Rozstrzygnięcie (2026-11-05):** ryzyko się potwierdziło. Człowiek wybrał (b) w węższym zakresie: `force-dynamic` na `/blog` i `/szycie-na-miare` (ADR-007).
 
 ## `docker-compose.yml` (repo testów, ja)
 

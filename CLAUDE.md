@@ -27,7 +27,7 @@ Python, pytest, Playwright (pytest-playwright), requests, psycopg2, jsonschema, 
 tests/{contract,api,db,e2e}/   # testy wg poziomu
 schemas/                       # schematy JSON per endpoint
 src/{clients,pages,db,schemas}/  # klient HTTP, page objecty, SQL, loader schematów
-conftest.py  pytest.ini  requirements.txt  .env.example
+conftest.py  pytest.ini  requirements.txt  .env.example  docker-compose.yml
 ```
 
 ## Konwencje
@@ -48,4 +48,4 @@ conftest.py  pytest.ini  requirements.txt  .env.example
 
 ## Status projektu
 
-**Aktualny etap:** Etap 1 — sklep w Dockerze (Etap 0 zakończony; repo git zainicjalizowane, gałąź `main`).
+**Aktualny etap:** Etap 1 — sklep w Dockerze: działa lokalnie (`docker compose up -d --build --wait`); do zamknięcia push sklepu i zielony deploy na Vercelu.

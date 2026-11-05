@@ -107,9 +107,21 @@ Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs
 - `prisma` i `tsx` są w `devDependencies` → nie ma ich w obrazie standalone. Dlatego przygotowanie bazy w osobnej usłudze `db-init` (etap `builder`), a nie w entrypoincie aplikacji.
 - Standalone nie kopiuje `public/` ani `.next/static` — trzeba ręcznie.
 - Stan magazynowy: kolumna `ProductRow.stockBySize` (JSON) per produkt → test może wstawić własny produkt z własnym stanem.
-- Ryzyko: jeśli `next build` prerenderuje strony z bazy, build w Dockerze bez bazy padnie — Grok sprawdza przed wyborem rozwiązania.
+- Potwierdzone 2026-11-04: `next build` bez bazy pada na `/blog` (Prisma bez `try/catch`), a `/szycie-na-miare` zostawałaby na stałe z danymi z mocka. Rozwiązanie: ADR-007, zadanie dla Groka: [`docs/handoff/2026-11-05-etap-1-docker-fix.md`](docs/handoff/2026-11-05-etap-1-docker-fix.md).
+- Seed nie zawiera wpisów bloga, więc w Dockerze blog startuje pusty; test bloga tworzy własny wpis (Etap 3).
 - `jersa-storefront.vercel.app` to piaskownica bez ruchu → traktujemy jako **STG**; właściwy sklep będzie na osobnym środowisku (PROD). Push na `main` sklepu deployuje od razu (brak PR-ów).
 - Agent sklepu (Grok) czyta `AGENTS.md` → `CLAUDE.md`; zasady „nie pushuj bez polecenia”, decyzje w `CLAUDE.md` + `docs/PLAN.md`.
+
+**Wynik lokalny (2026-11-05, sklep na commicie `4021449`)**
+- `docker compose up -d --build --wait` kończy się sukcesem: `postgres` i `app` healthy, `db-init` exited (0). Kolejny start z gotowych obrazów trwa ok. 13 s.
+- Obrazy: `runner` 397 MB, `builder` 1,33 GB, `postgres:16` 451 MB. Na dysku ok. 2 GB obrazów (wspólne warstwy) i 1,3 GB cache budowania.
+- `search?q=castello` zwraca `zakiet-castello` (350 zł); PDP, zdjęcie z `public/` i plik z `/_next/static` odpowiadają 200.
+- Baza: 5 produktów, po 5 szt. na rozmiar, 0 wpisów bloga.
+- **Strony czytają Postgresa, nie mocka:** znacznik wstawiony w SQL widać na `/szycie-na-miare`, `/produkt/suknia-mandisa`, `/blog` i `/blog/<slug>`.
+- `down -v` + `up` przywraca seed (zmieniony stan i nazwa wracają, blog znów pusty); `down` + `up` bez `-v` też przechodzi.
+- Sam commit `4021449` buduje się przez `git archive HEAD | docker build --target runner -`, czyli bez niezacommitowanych plików z folderu.
+- `tsc` bez błędów. Vitest: 74/74 według Groka; u mnie 44 zielone i 30 pominiętych przez blokadę Prismy (sekcja 6).
+- **Do zamknięcia etapu:** push sklepu i zielony deploy na Vercelu.
 
 **Projekt:** [`docs/superpowers/specs/2026-11-01-etap-1-docker-design.md`](docs/superpowers/specs/2026-11-01-etap-1-docker-design.md) · **Notka dla Groka:** [`docs/handoff/2026-11-01-etap-1-docker.md`](docs/handoff/2026-11-01-etap-1-docker.md)
 
@@ -127,7 +139,7 @@ Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs
 | Temat | Uwaga |
 |---|---|
 | Prisma: SQLite vs Postgres | ✅ Wyjaśnione (Etap 0): `COMMERCE=own` + URL Postgres + `prepare-database.mjs` przy starcie |
-| Konteneryzacja Next.js | Największe ryzyko techniczne etapów 0–1; konkretnie: prerender stron z bazy w `next build` (Etap 1) |
+| Konteneryzacja Next.js | Największe ryzyko techniczne etapów 0–1; konkretnie: prerender stron z bazy w `next build` (rozwiązanie: ADR-007) |
 | Koszty AWS | RDS i App Runner płatne — budżet, alerty, wyłączanie stagingu |
 | Deploy App Runnera | Asynchroniczny — smoke musi czekać na status RUNNING |
 | RDS | Prywatny; weryfikacja bazy na Postgresie z Dockera, na stagingu przez API |
@@ -200,6 +212,15 @@ zdarzenie (PR sklepu / push testów)
 - **Wyzwalacze:** ADR-005.
 - **Dlaczego Docker także przy zmianie w repo testów:** testy to też kod. Na znanej wersji sklepu z czystym seedem zmienia się tylko jedna rzecz — porażka wskazuje na zmianę w testach. Na stagingu porażka byłaby niejednoznaczna (zmienione dane? nowy deploy? staging leży?), a testy DB w ogóle by nie działały.
 
+### CI — konfiguracja w GitHubie (plan na Etap 5)
+
+1. Repo testów na GitHubie (`ironz1/jersa_test_framework`, prywatne).
+2. Token z prawem odczytu repo testów (fine-grained PAT) → sekret w repo sklepu, np. `TESTS_REPO_TOKEN`.
+3. Workflow w repo **sklepu** `.github/workflows/tests.yml` — **to on jest zapalnikiem** (`on: pull_request: branches: [main]`); docker-compose to tylko krok w środku: checkout sklepu (PR) → checkout testów (token) → `docker compose up --build --wait` (`STOREFRONT_PATH` = sklep z PR-a) → pip + `playwright install` → pytest → upload raportu (`if: always()`) → `down -v`.
+4. Branch protection na `main` sklepu: wymagany zielony status `tests` → CI staje się bramką.
+5. Praca w sklepie przez PR-y (push na `main` omija bramkę).
+6. W repo testów osobny workflow: `push`/`pull_request` (Docker, `main` sklepu) + `schedule` (nightly na STG).
+
 ### Mapowanie środowisk (klasyczne DEV/INT/STG/PROD → jersa)
 
 | Klasycznie | jersa | Rola |
@@ -240,6 +261,8 @@ core/           → konfiguracja, logowanie, klienci, utils
 |---|---|---|
 | Strategia stanu magazynowego w testach zamówień | Etap 3, przed pierwszym testem zamówienia | **Kandydat (2026-11-01):** test wstawia własny `ProductRow` (`test-<uuid>`, własne `stockBySize`), zamawia go, teardown usuwa zamówienie i produkt — seed nietknięty (ADR-003). Do potwierdzenia na działającym sklepie |
 | Dostęp testów do bazy STG (Neon) z CI | Etap 3/5 | Fixtures tworzące dane przez SQL na STG wymagają sekretu `DATABASE_URL` Neona w GitHub Actions; ADR-005 zakładał nightly bez testów DB |
+| Wpisy bloga w seedzie | Gdy będą gotowe treści | Seed dziś nie obsługuje bloga. Wymaga pliku z wpisami, zdjęć z `public/` (nie ze `StoredFile`) i samego dopisywania; wpis usunięty w adminie wróci po deployu, jeśli został w pliku |
+| Przeniesienie treści bloga na PROD | Przed uruchomieniem właściwego sklepu | Wpisy z admina na STG nie przejdą same: plik w repo albo migracja z bazy |
 | Praca w sklepie przez PR-y zamiast pushy na `main` | Przed Etapem 5 | Bramka na PR (ADR-005) działa tylko, gdy zmiany idą przez PR; dziś push na `main` deployuje od razu |
 | Mechanizm bramki na PR sklepu: workflow sklepu sam pobiera repo testów (checkout z tokenem) czy `repository_dispatch` / reusable workflow | Etap 5 | Status musi wrócić do PR-a sklepu; `repository_dispatch` nie raportuje wyniku do PR-a automatycznie, checkout testów w workflow sklepu — tak |
 | Budowanie obrazu sklepu przy każdym przebiegu czy gotowy obraz z GHCR | Etap 5 (optymalizacja) lub Etap 6 | Gotowy obraz skraca start z minut do sekund; ten sam mechanizm posłuży do ECR w AWS |
@@ -311,6 +334,19 @@ core/           → konfiguracja, logowanie, klienci, utils
 - **Konsekwencje:** zmiany w sklepie wprowadza Grok według notki (`docs/handoff/`), zasady trafiają do `CLAUDE.md` sklepu; repo testów niczego w sklepie nie commituje. Później obraz publikuje CI sklepu (GHCR/ECR).
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
+### ADR-007: Obraz sklepu budowany bez bazy, strony z danymi renderowane w czasie działania
+- **Data:** 2026-11-05
+- **Kontekst:** `docker build` nie ma dostępu do Postgresa, bo compose startuje bazę dopiero po zbudowaniu obrazu. Na Vercelu baza jest dostępna w buildzie, więc problem był tam niewidoczny. `/blog` wywracał build, a `/szycie-na-miare` zapisywała w obrazie dane z mocka bez odświeżania.
+- **Rozważane opcje:**
+  - A — `try/catch` w `/blog` — mała zmiana, ale chwilowa awaria bazy nadpisałaby cache ISR pustą listą; pierwsze wejście w kontenerze też mogłoby dać pustą stronę
+  - A′ — `try/catch` tylko w fazie builda (`NEXT_PHASE`) — Vercel bez zmian, ale wewnętrzna zmienna Next i ryzyko niestabilnych testów
+  - B — `force-dynamic` na stronach czytających bazę — obraz niezależny od bazy, testy widzą stan Postgresa; koszt: odczyt z bazy przy każdym wejściu, także na Vercelu
+  - C — baza dostępna w `docker build` — bez zmian w aplikacji, ale build w dwóch fazach zamiast `compose up --build`
+  - D — `--experimental-build-mode compile` — tryb eksperymentalny
+- **Decyzja:** B, tylko `/blog` i `/szycie-na-miare`. `/blog/[slug]` bez zmian, bo nie blokuje builda i czyta bazę przy pierwszym wejściu.
+- **Konsekwencje:** ten sam obraz działa w każdym środowisku, a build jest oddzielony od danych. Blog traci ISR, więc przed uruchomieniem właściwego sklepu trzeba sprawdzić czas odpowiedzi tych stron. Grok ma pokazać wynik `docker build`, bo poprzedni commit powstał bez niego (Docker wtedy nie działał).
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
 <!--
 ### ADR-001: <tytuł decyzji>
 - **Data:**
@@ -349,6 +385,27 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Na rozmowie:** dobra historia do pytania „opowiedz o trudnym problemie”
 -->
 
+### `next build` w Dockerze pada, choć commit wyglądał na gotowy (Etap 1, 2026-11-04)
+- **Objaw:** `docker compose up --build` kończy się błędem `PrismaClientInitializationError` przy prerenderze `/blog`. Na Vercelu ten sam kod buduje się bez problemu.
+- **Przyczyna:** Vercel ma bazę w czasie builda, a `docker build` nie. Agent sklepu nie mógł uruchomić builda, bo Docker był zawieszony, więc kryterium akceptacji nie zostało sprawdzone. Przegląd samego diffa też tego nie wyłapał.
+- **Rozwiązanie:** ADR-007, `force-dynamic` na `/blog` i `/szycie-na-miare`.
+- **Jak zapobiec:** kryterium „build przechodzi” wymaga dowodu z uruchomienia; czytanie kodu go nie zastępuje. Zmianę sprawdzać też zachowaniem: znacznik wstawiony w SQL pokazał, które strony naprawdę czytają bazę.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### Vitest daje inny wynik u agenta AI (Etap 1, 2026-11-05)
+- **Objaw:** u Groka 74/74, u Claude Code 1 plik padł i 30 testów pominięto.
+- **Przyczyna:** `own-commerce.test.ts` uruchamia `prisma db push --force-reset`, a Prisma odmawia takich komend, gdy wykryje wywołanie przez Claude Code. Blokada działa zależnie od tego, kto uruchamia test. Reset dotyczy tylko lokalnego `prisma/prisma/test.db`.
+- **Rozwiązanie:** blokady nie obchodzimy; wynik pełnego przebiegu pochodzi od Groka, a przyczynę potwierdzono w kodzie testu i po czasie modyfikacji pliku.
+- **Jak zapobiec:** przy rozbieżnych wynikach szukać różnicy w środowisku, zanim uzna się test za zepsuty. Przed uruchomieniem cudzych testów sprawdzić, czy resetują bazę i którą.
+
+### Docker zawiesza się w trakcie buildu (Etap 1, 2026-11-04)
+- **Objaw:** `docker compose up --build` stoi ponad godzinę na `npm ci`, potem każda komenda `docker` zwraca `Internal Server Error ... docker_engine`. Restart Docker Desktop pomaga tylko na chwilę.
+- **Przyczyna:** pełny dysk C: (79 MB wolnego). Docker Desktop trzyma wszystko w jednym pliku `AppData\Local\Docker\wsl\data\ext4.vhdx` (31,4 GB), który **rośnie, ale sam się nie kurczy** — w środku było tylko ~9 GB danych (stare obrazy, 5,4 GB cache budowania), reszta to miejsce po dawno usuniętych warstwach.
+- **Rozwiązanie:** `npm cache clean --force` (+5 GB); usunięcie starych obrazów i kontenerów + `docker builder prune -a`; zamknięcie Docker Desktop, `wsl --shutdown` i kompaktowanie w `diskpart` (`select vdisk file=...`, `attach vdisk readonly`, `compact vdisk`, `detach vdisk`) → vhdx 31,4 → 10,5 GB, wolne 24,4 GB.
+- **Jak zapobiec:** przed buildem `docker system df` i wolne miejsce na dysku (build Next.js potrzebuje ~8–10 GB); okresowo `docker builder prune`; kompaktowanie vhdx po dużych porządkach; ewentualnie przeniesienie dysku Dockera na inny dysk (Settings → Resources → Disk image location). Diagnoza zaczyna się od zasobów (dysk, RAM), nie od restartu.
+- **Przy okazji — lekcja o `.dockerignore`:** stary obraz frameworka z poprzedniej pracy miał warstwę `COPY . /test_root` = 606 MB, bo bez `.dockerignore` trafiło do niego całe repo: `.git`, `.idea`, logi, pobrane pliki i plik z danymi logowania. Obraz można skopiować, wypchnąć do rejestru i rozpakować — wszystko, co w nim jest, trzeba traktować jak opublikowane. Dlatego w Dockerfile sklepu jest `.dockerignore` (`.env*`, `.git`, `node_modules`, `*.db`).
+- **Na rozmowie:** historia „opowiedz o trudnym problemie”: objaw wyglądał na awarię Dockera, a przyczyną były zasoby hosta; najpierw zmierzyłem (dysk, `docker system df`, rozmiar vhdx), dopiero potem sprzątałem — i tylko za zgodą właściciela danych.
+
 ---
 
 ## 7. Zarządzanie frameworkiem
@@ -381,6 +438,8 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 14. **Zaplanuj wyzwalacze CI** — co, kiedy i na jakiej wersji SUT; najważniejsza jest bramka na PR aplikacji, żeby błąd nie dotarł na staging.
 15. **Zainicjalizuj repo i zrób pierwszy commit przed kodem** — `.gitignore` od startu (`.env`, raporty, cache), żeby sekrety i artefakty nigdy nie trafiły do historii.
 16. **Zamów obraz aplikacji u jej właściciela** — Dockerfile przy kodzie aplikacji, compose przy testach; wymagania przekazane notką z kryteriami akceptacji, a stałe zasady zapisane w instrukcjach repo aplikacji.
+17. **Oddziel budowanie obrazu od danych** — obraz nie powinien wymagać bazy do zbudowania, a kryterium „build przechodzi” wymaga dowodu z uruchomienia.
+18. **Sprawdź środowisko zachowaniem, nie tylko statusem** — healthy nie dowodzi, że strony czytają bazę; znacznik w SQL i świeży seed po `down -v` już tak.
 
 ---
 
@@ -410,6 +469,33 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 ### Co to jest shift-left i jak go stosujesz?
 - **Odpowiedź:** przesuwanie testów jak najwcześniej w procesie, bo im wcześniej wykryty błąd, tym tańsza naprawa. To nie jeden krok, tylko cała oś: review wymagań → testy jednostkowe → testy lokalnie przed pushem → bramka na PR → staging → produkcja. U mnie konkretnie: przeniosłem testowanie zmian aplikacji z „po deployu na staging” na „przed merge” (bramka na PR) — to przesunięcie w lewo, ale nie pełny shift-left; wcześniej są jeszcze testy jednostkowe (Vitest) i uruchamianie testów lokalnie w Dockerze.
 - **Dowód:** ADR-005, sekcja 10 — shift-left.
+
+### Jak wygląda Twoja codzienna praca z testami lokalnie?
+- **Odpowiedź:** rano raz `docker compose up -d --build --wait` — compose buduje obraz aplikacji i stawia ją z bazą i seedem w tle. Potem cały dzień uruchamiam testy z IDE (panel Testing, debug z breakpointami, `--headed`) — pytest działa na hoście, nie w kontenerze, i trafia w `localhost:3000` / `:5432` według `BASE_URL` i `DATABASE_URL` z `.env`. Kontenerów nie restartuję między testami; przebudowuję je (`--build`) tylko po zmianie aplikacji, a świeżą bazę dostaję przez `down -v`. Żeby uruchomić te same testy na stagingu, zmieniam tylko `BASE_URL`.
+- **Dlaczego testy poza kontenerem:** debugowanie i podgląd przeglądarki działają bez konfiguracji. Alternatywa: fixture startująca compose (`pytest-docker`) — jeden klik, ale minuta czekania na każde uruchomienie.
+- **Dowód:** `docker-compose.yml`, `.env.example`, sekcja 3 — środowisko testowe.
+
+### Skąd lokalne środowisko bierze kod aplikacji? Czy to „najnowsza wersja”?
+- **Odpowiedź:** compose nie pobiera niczego z GitHuba — buduje obraz z **folderu** lokalnego klonu (build context), dokładnie w stanie z tej chwili, łącznie z niezacommitowanymi zmianami. Najnowsza = najnowsza na dysku. Bez `--build` compose użyje starego obrazu. W CI jest inaczej: runner robi czysty checkout konkretnego commita, więc zawsze wiadomo, co jest testowane — dlatego wynik z CI jest wiarygodniejszy niż lokalny.
+- **Pułapka:** gdy developer (u mnie agent Grok) jest w połowie pracy, lokalny obraz zawiera niedokończony kod — przy dziwnej porażce najpierw `git status` w klonie aplikacji.
+- **Dowód:** sekcja 10 — build context; notatki z Etapu 1.
+
+### Czym jest quality gate i czym różni się od samego CI?
+- **Odpowiedź:** CI to automat, który uruchamia testy i pokazuje wynik. Bramką (quality gate) staje się dopiero, gdy wynik **decyduje**, czy kod przejdzie dalej — w GitHubie przez branch protection na `main` z wymaganym zielonym statusem testów. Bez tej reguły czerwony krzyżyk jest tylko ostrzeżeniem i merge można zrobić. Bramkę omija też push bezpośrednio na `main` — dlatego zmiany muszą iść przez PR-y.
+- **U mnie:** bramka na PR sklepu (ADR-005); warunek: sklep przechodzi na pracę przez PR-y (otwarta decyzja przed Etapem 5).
+- **Dowód:** ADR-005, sekcja 10 — quality gate.
+
+### Jak skonfigurujesz bramkę na PR, gdy testy są w osobnym repo?
+- **Odpowiedź:** zapalnikiem jest workflow w **repo aplikacji** (`.github/workflows/tests.yml`, `on: pull_request: branches: [main]`), nie docker-compose — compose to tylko jeden z kroków. Kroki: checkout aplikacji z PR-a → checkout repo testów (prywatne → token jako sekret) → `docker compose up --build --wait` z kodem z PR-a → pytest → upload raportu (`if: always()`) → `down -v`. Na koniec branch protection na `main` wymaga zielonego statusu. Repo testów ma osobny workflow: push/PR (testy na `main` aplikacji) i cron (nightly na STG).
+- **Dowód:** sekcja 3 — konfiguracja w GitHubie; ADR-005.
+
+### Dlaczego Dockerfile aplikacji jest w repo aplikacji, a nie w repo testów?
+- **Odpowiedź:** Dockerfile to przepis na zbudowanie aplikacji — zmienia się razem z nią (wersja Node, zależności, sposób budowania). W repo aplikacji zmienia się w tym samym commicie co kod, a PR buduje obraz z własnego Dockerfile. W repo testów po cichu by się psuł przy zmianach aplikacji, a naprawiałby go ktoś inny niż autor zmiany. Zasada: repo aplikacji produkuje artefakt (obraz), repo testów go konsumuje (compose). Zespół testów nie commituje do repo aplikacji — przekazuje wymagania z kryteriami akceptacji.
+- **Dowód:** ADR-006, `docs/handoff/2026-11-01-etap-1-docker.md`.
+
+### Jak izolujesz dane testowe, gdy staging ma trwałą, współdzieloną bazę?
+- **Odpowiedź:** na poziomie **testu**, nie zestawu. Każdy test tworzy własne dane z unikalnym prefiksem (np. własny produkt ze stanem magazynowym) i w teardownie usuwa je po ID. Reset całej bazy przed zestawem odrzuciłem: koliduje z równoległymi przebiegami (nightly + smoke po deployu) i workerami pytest-xdist, niszczy cudze dane, a na produkcji byłby niemożliwy — wolę nawyk, który działa wszędzie. W Dockerze świeża baza na przebieg i tak przychodzi za darmo.
+- **Dowód:** ADR-003 (doprecyzowanie 2026-11-01), sekcja 10 — seed.
 
 <!--
 ### Jak zaprojektowałbyś framework od zera?
@@ -469,6 +555,21 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Dlaczego:** im wcześniej błąd zostanie wykryty, tym taniej go naprawić.
 - **Oś (od lewej):** review wymagań → testy jednostkowe → testy lokalnie przed pushem → bramka na PR → staging → produkcja.
 - **U mnie:** bramka na PR sklepu (ADR-005) — testy zmian sklepu przed merge zamiast dopiero po deployu. To przesunięcie w lewo, **nie pełny shift-left**: wcześniej są jeszcze testy jednostkowe sklepu (Vitest) i testy uruchamiane lokalnie w Dockerze przed pushem.
+
+### Quality gate (bramka jakości) i branch protection
+- **Definicja:** punkt w procesie, przez który kod nie przejdzie dalej bez spełnienia warunku (np. zielonych testów). Analogia: kontrola bezpieczeństwa na lotnisku.
+- **Branch protection:** reguła GitHuba na gałęzi (Settings → Branches), np. „merge do `main` wymaga zielonego statusu `tests`” — to ona zamienia CI z informacji w bramkę.
+- **U mnie:** bramka na PR sklepu (ADR-005), dopiero od Etapu 5 i po przejściu sklepu na PR-y.
+
+### Workflow, trigger, runner (GitHub Actions)
+- **Workflow:** plik YAML w `.github/workflows/` — opis *kiedy* i *co* uruchomić.
+- **Trigger (`on:`):** zdarzenie, które uruchamia workflow — `pull_request`, `push`, `schedule` (cron, UTC), `workflow_dispatch` (ręcznie).
+- **Runner:** maszyna wirtualna GitHuba (np. `ubuntu-latest`) stawiana na jeden przebieg i kasowana po nim. Darmowy limit dla prywatnych repo ok. 2000 min/mies.
+- **Gdzie widać wynik:** zakładka Actions (logi, artefakty) i status przy PR/commicie.
+
+### Build context (kontekst budowania)
+- **Definicja:** folder, który Docker dostaje do zbudowania obrazu — Dockerfile widzi tylko pliki z tego folderu (minus `.dockerignore`).
+- **U mnie:** `STOREFRONT_PATH` → lokalny klon sklepu; w CI → katalog checkoutu z PR-a. Obraz = stan folderu w chwili `--build`, nie stan GitHuba.
 
 ---
 
