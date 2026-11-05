@@ -68,7 +68,7 @@ Priorytet: etapy 0–5 dają kompletne portfolio bez kosztów AWS.
 COMMERCE=own
 DATABASE_URL=postgresql://jersa:jersa@postgres:5432/jersa
 ```
-Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs` (lub ręcznie: rewrite providera + `db push` + seed).
+To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + `db push` + seed). W Etapie 1 robi to usługa `db-init`, nie entrypoint.
 
 **Granice kontraktu API**
 - Katalog (home, PDP, kategorie) to React Server Components — **brak REST GET produktu**. Kontrakt API obejmuje tylko BFF `/api/commerce/*`; katalog testujemy przez E2E.
@@ -92,7 +92,7 @@ Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs
 - **Kontrakt:** `Product` powtarza się w cart, wishlist i search → jedna definicja współdzielona (`$ref`); `customFit` i `sizeSurcharge` opcjonalne; jeden schemat błędu.
 - **PayU mock bez podpisu:** można testować idempotencję (`payu/start` ten sam redirect, drugi `COMPLETED` → `duplicate: true`) i przejścia statusów.
 
-**Implikacje dla Etapu 1 (Docker)**
+**Implikacje dla Etapu 1 (Docker), wstępne z Etapu 0; entrypoint zastąpiła usługa `db-init`, patrz notatki Etapu 1**
 - W sklepie nie ma `output: "standalone"` ani Dockerfile → trzeba dodać `output: "standalone"` w `next.config.ts`.
 - Multi-stage: deps → build. `prepare-database` przy buildzie wymaga Postgresa → push i seed przenieść do entrypointu.
 - Compose: `postgres:16` + app z `COMMERCE=own` i `DATABASE_URL=postgresql://...`.
@@ -112,15 +112,16 @@ Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs
 - `jersa-storefront.vercel.app` to piaskownica bez ruchu → traktujemy jako **STG**; właściwy sklep będzie na osobnym środowisku (PROD). Push na `main` sklepu deployuje od razu (brak PR-ów).
 - Agent sklepu (Grok) czyta `AGENTS.md` → `CLAUDE.md`; zasady „nie pushuj bez polecenia”, decyzje w `CLAUDE.md` + `docs/PLAN.md`.
 
-**Wynik lokalny (2026-11-05, sklep na commicie `4021449`)**
-- `docker compose up -d --build --wait` kończy się sukcesem: `postgres` i `app` healthy, `db-init` exited (0). Kolejny start z gotowych obrazów trwa ok. 13 s.
-- Obrazy: `runner` 397 MB, `builder` 1,33 GB, `postgres:16` 451 MB. Na dysku ok. 2 GB obrazów (wspólne warstwy) i 1,3 GB cache budowania.
-- `search?q=castello` zwraca `zakiet-castello` (350 zł); PDP, zdjęcie z `public/` i plik z `/_next/static` odpowiadają 200.
+**Wynik lokalny (2026-11-05, czysta kopia commita `4021449`, bez niezacommitowanych stron: `/faq` zwraca 404)**
+- `docker compose up -d --build --wait` kończy się sukcesem: `postgres` i `app` healthy, `db-init` exited (0). Build z cache zależności trwa ok. 67 s (czasu pierwszego pełnego builda nie zmierzono), kolejny start z gotowych obrazów ok. 13 s.
+- Obrazy: `runner` 380 MB, `builder` 1,28 GB, `postgres:16` 451 MB. Na dysku ok. 2 GB obrazów (wspólne warstwy) i ok. 1,3 GB cache budowania (zmierzone na obrazie z folderu).
+- `search?q=castello` zwraca `zakiet-castello` (350 zł); strona główna, PDP, zdjęcie produktu z `public/`, plik z `/_next/static` i logo przez `/_next/image` odpowiadają 200. Tabela tras z `next build` oznacza `/blog` i `/szycie-na-miare` jako dynamiczne (`ƒ`).
 - Baza: 5 produktów, po 5 szt. na rozmiar, 0 wpisów bloga.
 - **Strony czytają Postgresa, nie mocka:** znacznik wstawiony w SQL widać na `/szycie-na-miare`, `/produkt/suknia-mandisa`, `/blog` i `/blog/<slug>`.
 - `down -v` + `up` przywraca seed (zmieniony stan i nazwa wracają, blog znów pusty); `down` + `up` bez `-v` też przechodzi.
-- Sam commit `4021449` buduje się przez `git archive HEAD | docker build --target runner -`, czyli bez niezacommitowanych plików z folderu.
+- Pierwsze sprawdzenie przeszło na obrazie z folderu (z niezacommitowanymi stronami), dlatego powtórzone na eksporcie `git archive` samego commita.
 - `tsc` bez błędów. Vitest: 74/74 według Groka; u mnie 44 zielone i 30 pominiętych przez blokadę Prismy (sekcja 6).
+- Nie sprawdzono jeszcze ścieżki Vercela (`npm run build` z Postgresem): potwierdzi ją deploy.
 - **Do zamknięcia etapu:** push sklepu i zielony deploy na Vercelu.
 
 **Projekt:** [`docs/superpowers/specs/2026-11-01-etap-1-docker-design.md`](docs/superpowers/specs/2026-11-01-etap-1-docker-design.md) · **Notka dla Groka:** [`docs/handoff/2026-11-01-etap-1-docker.md`](docs/handoff/2026-11-01-etap-1-docker.md)
@@ -138,7 +139,7 @@ Przy starcie kontenera to samo co na Vercelu: `node scripts/prepare-database.mjs
 
 | Temat | Uwaga |
 |---|---|
-| Prisma: SQLite vs Postgres | ✅ Wyjaśnione (Etap 0): `COMMERCE=own` + URL Postgres + `prepare-database.mjs` przy starcie |
+| Prisma: SQLite vs Postgres | ✅ Wyjaśnione (Etap 0): `COMMERCE=own` + URL Postgres + `prepare-database.mjs` w usłudze `db-init` |
 | Konteneryzacja Next.js | Największe ryzyko techniczne etapów 0–1; konkretnie: prerender stron z bazy w `next build` (rozwiązanie: ADR-007) |
 | Koszty AWS | RDS i App Runner płatne — budżet, alerty, wyłączanie stagingu |
 | Deploy App Runnera | Asynchroniczny — smoke musi czekać na status RUNNING |
@@ -172,21 +173,21 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 ```
 
 - **W Dockerze jest tylko SUT:** sklep + Postgres. Framework działa **poza** Dockerem, na hoście (IDE, terminal, runner CI) — łatwe debugowanie, breakpointy, widoczna przeglądarka.
-- **Uruchomiony Docker = prywatna instancja sklepu** — jak mały staging na laptopie, z czystą bazą przy każdym starcie.
+- **Uruchomiony Docker = prywatna instancja sklepu** — jak mały staging na laptopie. Świeżą bazę daje `down -v`; zwykły restart zachowuje dane.
 - **Wystawianie portów** (`ports: ["3000:3000"]` w `docker-compose.yml`, format `host:kontener`): sklep widoczny jako `localhost:3000`, baza jako `localhost:5432`. Bez `ports` nic spoza Dockera nie widzi kontenera.
 - **Wewnątrz Dockera** kontenery rozmawiają po nazwie serwisu (`postgres:5432`), nie przez `localhost`.
-- **Te same testy, różne cele:** testy znają tylko `BASE_URL` z `.env`. Zmiana jednej zmiennej przełącza Docker ↔ staging.
+- **Te same testy, różne cele:** testy czytają cel z `.env`: `BASE_URL`, a testy i fixtures używające SQL także `DATABASE_URL`. Bez zmiany obu HTTP poszłoby na STG, a SQL na lokalną bazę.
 
 | | Docker lokalnie | Staging (Vercel) |
 |---|---|---|
 | Kto stawia | ja, `docker compose up` | Vercel, po deployu |
 | Dane na starcie | zawsze te same (seed) | to, co zostało po poprzednich testach i ludziach |
 | Silnik bazy | Postgres | Postgres (Neon) |
-| Testy DB (psycopg2) | tak, bezpośrednio | nie — stan sprawdzamy przez API |
+| Testy DB (psycopg2) | tak, bezpośrednio | zależy od otwartej decyzji o sekrecie Neona w CI; bez niego stan tylko przez API |
 | Co sprawdza | czy kod sklepu działa | czy działa wdrożona wersja |
 | Kiedy | codziennie + CI na push | nightly regression + smoke po deployu |
 
-**Jeden przebieg:** `docker compose up` (Postgres → sklep → schemat + seed) → healthcheck (`/api/commerce/search?q=castello` zwraca CASTELLO) → `pytest` → `docker compose down -v` (wszystko znika).
+**Jeden przebieg:** `docker compose up` (Postgres → `db-init`: schemat + seed → sklep) → healthcheck (`/api/commerce/search?q=castello` zwraca CASTELLO) → `pytest` → `docker compose down -v` (wszystko znika).
 
 **Docker ≠ CI.** Docker odpowiada na pytanie *jak* postawić środowisko; CI (GitHub Actions) — *kiedy* i *co* uruchomić. CI używa Dockera jako narzędzia i powtarza te same komendy co lokalnie, dlatego Etap 1 (Docker) jest przed Etapem 5 (CI).
 
@@ -318,7 +319,7 @@ core/           → konfiguracja, logowanie, klienci, utils
   |---|---|---|---|
   | PR w repo **sklepu** | gałąź PR-a | Docker na runnerze | **główny:** łapie błędy sklepu przed merge |
   | Push / PR w repo **testów** | `main` sklepu | Docker na runnerze | czy zmienione testy działają (zmienia się tylko jedna rzecz) |
-  | Nightly (cron) | staging | Vercel | pełny regression na wdrożonej wersji (bez testów DB) |
+  | Nightly (cron) | staging | Vercel | pełny regression na wdrożonej wersji (testy DB zależą od otwartej decyzji o dostępie do Neona) |
   | Po deployu | staging | Vercel | szybki smoke: czy wdrożenie się udało |
 
 - **Konsekwencje:** w repo sklepu pojawia się workflow (architektura sklepu bez zmian); potrzebny token do odczytu prywatnego repo; czerwony wynik może blokować merge (branch protection). Koszt: dłuższy PR w sklepie o czas budowy obrazu.
@@ -344,7 +345,7 @@ core/           → konfiguracja, logowanie, klienci, utils
   - C — baza dostępna w `docker build` — bez zmian w aplikacji, ale build w dwóch fazach zamiast `compose up --build`
   - D — `--experimental-build-mode compile` — tryb eksperymentalny
 - **Decyzja:** B, tylko `/blog` i `/szycie-na-miare`. `/blog/[slug]` bez zmian, bo nie blokuje builda i czyta bazę przy pierwszym wejściu.
-- **Konsekwencje:** ten sam obraz działa w każdym środowisku, a build jest oddzielony od danych. Blog traci ISR, więc przed uruchomieniem właściwego sklepu trzeba sprawdzić czas odpowiedzi tych stron. Grok ma pokazać wynik `docker build`, bo poprzedni commit powstał bez niego (Docker wtedy nie działał).
+- **Konsekwencje:** ten sam obraz działa w każdym środowisku, a build jest oddzielony od danych. Blog traci ISR, więc przed uruchomieniem właściwego sklepu trzeba sprawdzić czas odpowiedzi tych stron. Poprzedni commit powstał bez builda, bo Docker wtedy nie działał; naprawę sprawdzono uruchomieniem.
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
 <!--
@@ -448,7 +449,7 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z linkiem do ADR / problemu).
 
 ### Jak zapewniasz powtarzalne środowisko testowe?
-- **Odpowiedź:** konteneryzuję SUT (Docker + docker-compose): sklep i Postgres startują jedną komendą, z czystą bazą i znanym seedem na każdy przebieg. Ten sam obraz działa lokalnie, w CI (GitHub Actions) i w chmurze (AWS). Testy nie zależą od współdzielonego stagingu ani od tego, co ktoś wcześniej kliknął, i idą na tym samym silniku bazy co produkcja (Postgres, nie SQLite).
+- **Odpowiedź:** konteneryzuję SUT (Docker + docker-compose): sklep i Postgres startują jedną komendą, z czystą bazą i znanym seedem po `down -v`, a w CI na każdy przebieg. Działa lokalnie; ten sam układ jest zaplanowany w CI (Etap 5) i w chmurze (Etap 6). Testy nie zależą od współdzielonego stagingu ani od tego, co ktoś wcześniej kliknął, i idą na tym samym silniku bazy co produkcja (Postgres, nie SQLite).
 - **Czego unikam:** „u mnie działa”, testów na współdzielonym stagingu ze zmiennymi danymi, różnic między bazą testową a produkcyjną.
 - **Dowód:** Etap 1 (Docker), notatki z Etapu 0 (Prisma SQLite ↔ Postgres), sekcja 10 — SUT, seed.
 
@@ -471,7 +472,7 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Dowód:** ADR-005, sekcja 10 — shift-left.
 
 ### Jak wygląda Twoja codzienna praca z testami lokalnie?
-- **Odpowiedź:** rano raz `docker compose up -d --build --wait` — compose buduje obraz aplikacji i stawia ją z bazą i seedem w tle. Potem cały dzień uruchamiam testy z IDE (panel Testing, debug z breakpointami, `--headed`) — pytest działa na hoście, nie w kontenerze, i trafia w `localhost:3000` / `:5432` według `BASE_URL` i `DATABASE_URL` z `.env`. Kontenerów nie restartuję między testami; przebudowuję je (`--build`) tylko po zmianie aplikacji, a świeżą bazę dostaję przez `down -v`. Żeby uruchomić te same testy na stagingu, zmieniam tylko `BASE_URL`.
+- **Odpowiedź:** rano raz `docker compose up -d --build --wait` — compose buduje obraz aplikacji i stawia ją z bazą i seedem w tle. Potem cały dzień uruchamiam testy z IDE (panel Testing, debug z breakpointami, `--headed`) — pytest działa na hoście, nie w kontenerze, i trafia w `localhost:3000` / `:5432` według `BASE_URL` i `DATABASE_URL` z `.env`. Kontenerów nie restartuję między testami; przebudowuję je (`--build`) tylko po zmianie aplikacji, a świeżą bazę dostaję przez `down -v`. Żeby uruchomić te same testy na stagingu, zmieniam `BASE_URL`, a przy fixtures z SQL także `DATABASE_URL`.
 - **Dlaczego testy poza kontenerem:** debugowanie i podgląd przeglądarki działają bez konfiguracji. Alternatywa: fixture startująca compose (`pytest-docker`) — jeden klik, ale minuta czekania na każde uruchomienie.
 - **Dowód:** `docker-compose.yml`, `.env.example`, sekcja 3 — środowisko testowe.
 
@@ -517,7 +518,7 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 
 ### Seed (dane startowe)
 - **Definicja:** skrypt lub plik, który wypełnia pustą bazę znanym, przewidywalnym zestawem danych startowych.
-- **U mnie:** `fixtures/catalog.json` + `scripts/seed-catalog.ts` w sklepie → 5 produktów, 5 szt. na każdy rozmiar, 2 opinie CASTELLO. Uruchamiany przez `prepare-database.mjs` przy starcie kontenera.
+- **U mnie:** `fixtures/catalog.json` + `scripts/seed-catalog.ts` w sklepie → 5 produktów, 5 szt. na każdy rozmiar, 2 opinie CASTELLO. Uruchamiany przez `prepare-database.mjs` w usłudze `db-init`.
 - **Dlaczego jest ważny:** testy potrzebują punktu wyjścia, który zawsze wygląda tak samo. Dzięki seedowi wiadomo, że CASTELLO kosztuje 350 zł i ma rozmiar 36 — test może na tym polegać bez tworzenia produktu.
 - **Seed vs dane tworzone przez test:**
 
