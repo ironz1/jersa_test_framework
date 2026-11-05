@@ -1,0 +1,66 @@
+# Środowisko testowe DEV/INT: sklep jersa-storefront + Postgres + seed.
+# Obraz sklepu budowany z Dockerfile w repo sklepu (ADR-006).
+#   docker compose up -d --build --wait   → start (czeka na healthchecki)
+#   docker compose down -v                → stop + świeża baza przy następnym starcie
+name: jersa
+
+x-storefront-env: &storefront-env
+  COMMERCE: own
+  DATABASE_URL: postgresql://jersa:jersa@postgres:5432/jersa
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-dev-admin}
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: jersa
+      POSTGRES_PASSWORD: jersa
+      POSTGRES_DB: jersa
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jersa -d jersa"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Jednorazowo: schemat (db push) + seed katalogu, potem kończy się kodem 0.
+  db-init:
+    build:
+      context: ${STOREFRONT_PATH:-../../Documents/Repos/jersa-storefront}
+      target: builder
+    image: jersa-storefront:builder
+    command: ["node", "scripts/prepare-database.mjs"]
+    environment: *storefront-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: ${STOREFRONT_PATH:-../../Documents/Repos/jersa-storefront}
+      target: runner
+    image: jersa-storefront:runner
+    environment: *storefront-env
+    ports:
+      - "3000:3000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    # Obraz slim nie ma curl — sprawdzamy przez Node, że seed jest widoczny w API.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/api/commerce/search?q=castello').then(r=>r.text()).then(t=>process.exit(t.includes('zakiet-castello')?0:1)).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 30
+
+volumes:
+  pgdata:

@@ -34,3 +34,6 @@ Thumbs.db
 
 # Claude Code — lokalne ustawienia
 .claude/settings.local.json
+
+# Robocze pliki superpowers (ledger planów)
+.superpowers/
