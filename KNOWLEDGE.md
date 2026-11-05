@@ -122,6 +122,7 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - Pierwsze sprawdzenie przeszło na obrazie z folderu (z niezacommitowanymi stronami), dlatego powtórzone na eksporcie `git archive` samego commita.
 - `tsc` bez błędów. Vitest: 74/74 według Groka; u mnie 44 zielone i 30 pominiętych przez blokadę Prismy (sekcja 6).
 - Nie sprawdzono jeszcze ścieżki Vercela (`npm run build` z Postgresem): potwierdzi ją deploy.
+- **Porty (2026-11-05):** sklep w Dockerze jest na hoście na `127.0.0.1:3100` (w kontenerze nadal 3000), bo `next dev` i Playwright sklepu używają 3000. Bez rozdzielenia ich przeglądarka trafiałaby w kontener ze starym kodem. Port rozdziela tylko uruchomienie: `--build` nadal bierze kod z folderu, w którym pracuje agent sklepu; stabilną wersję daje `STOREFRONT_PATH` wskazujący eksport commita.
 - **Do zamknięcia etapu:** push sklepu i zielony deploy na Vercelu.
 
 **Projekt:** [`docs/superpowers/specs/2026-11-01-etap-1-docker-design.md`](docs/superpowers/specs/2026-11-01-etap-1-docker-design.md) · **Notka dla Groka:** [`docs/handoff/2026-11-01-etap-1-docker.md`](docs/handoff/2026-11-01-etap-1-docker.md)
@@ -163,7 +164,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 ```
 ┌──────────── Mój komputer / runner CI ────────────┐
 │                                                  │
-│  pytest (IDE, venv)  ──HTTP──► :3000 ─┐  Docker  │
+│  pytest (IDE, venv)  ──HTTP──► :3100 ─┐  Docker  │
 │   - API (requests)                    ▼          │
 │   - E2E (Playwright)          app: sklep Next.js │
 │   - DB (psycopg2) ──SQL──► :5432 ─┐   │ SQL      │
@@ -174,7 +175,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 
 - **W Dockerze jest tylko SUT:** sklep + Postgres. Framework działa **poza** Dockerem, na hoście (IDE, terminal, runner CI) — łatwe debugowanie, breakpointy, widoczna przeglądarka.
 - **Uruchomiony Docker = prywatna instancja sklepu** — jak mały staging na laptopie. Świeżą bazę daje `down -v`; zwykły restart zachowuje dane.
-- **Wystawianie portów** (`ports: ["3000:3000"]` w `docker-compose.yml`, format `host:kontener`): sklep widoczny jako `localhost:3000`, baza jako `localhost:5432`. Bez `ports` nic spoza Dockera nie widzi kontenera.
+- **Wystawianie portów** (`ports: ["127.0.0.1:3100:3000"]` w `docker-compose.yml`, format `host:kontener`): sklep widoczny jako `localhost:3100`, baza jako `localhost:5432`. Bez `ports` nic spoza Dockera nie widzi kontenera.
 - **Wewnątrz Dockera** kontenery rozmawiają po nazwie serwisu (`postgres:5432`), nie przez `localhost`.
 - **Te same testy, różne cele:** testy czytają cel z `.env`: `BASE_URL`, a testy i fixtures używające SQL także `DATABASE_URL`. Bez zmiany obu HTTP poszłoby na STG, a SQL na lokalną bazę.
 
@@ -194,7 +195,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 ### CI — jak to działa (GitHub Actions)
 
 - **Runner:** po zdarzeniu (push, PR, cron) GitHub uruchamia świeżą maszynę wirtualną (Ubuntu z Dockerem, Pythonem, gitem), wykonuje kroki z `.github/workflows/*.yml` i niszczy ją po zakończeniu. Każdy przebieg od zera.
-- **Docker i pytest działają na tym samym runnerze** → `localhost:3000` działa jak na laptopie. Mapa środowiska pasuje do CI 1:1 — „mój komputer” zamienia się na runner.
+- **Docker i pytest działają na tym samym runnerze** → `localhost:3100` działa jak na laptopie. Mapa środowiska pasuje do CI 1:1 — „mój komputer” zamienia się na runner.
 
 ```
 zdarzenie (PR sklepu / push testów)
@@ -203,7 +204,7 @@ zdarzenie (PR sklepu / push testów)
     2. checkout repo sklepu (gałąź PR-a lub main; prywatne → token)
     3. docker compose up --build --wait   (sklep + Postgres + seed, czeka na healthchecki)
     4. setup Pythona, pip install, playwright install --with-deps chromium
-    5. pytest                             (localhost:3000, :5432)
+    5. pytest                             (localhost:3100, :5432)
     6. upload raportu, trace, wideo       (if: always() — także po porażce)
     7. docker compose down -v
   → status ✅/❌ przy PR/commicie + artefakty + logi
@@ -472,7 +473,7 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Dowód:** ADR-005, sekcja 10 — shift-left.
 
 ### Jak wygląda Twoja codzienna praca z testami lokalnie?
-- **Odpowiedź:** rano raz `docker compose up -d --build --wait` — compose buduje obraz aplikacji i stawia ją z bazą i seedem w tle. Potem cały dzień uruchamiam testy z IDE (panel Testing, debug z breakpointami, `--headed`) — pytest działa na hoście, nie w kontenerze, i trafia w `localhost:3000` / `:5432` według `BASE_URL` i `DATABASE_URL` z `.env`. Kontenerów nie restartuję między testami; przebudowuję je (`--build`) tylko po zmianie aplikacji, a świeżą bazę dostaję przez `down -v`. Żeby uruchomić te same testy na stagingu, zmieniam `BASE_URL`, a przy fixtures z SQL także `DATABASE_URL`.
+- **Odpowiedź:** rano raz `docker compose up -d --build --wait` — compose buduje obraz aplikacji i stawia ją z bazą i seedem w tle. Potem cały dzień uruchamiam testy z IDE (panel Testing, debug z breakpointami, `--headed`) — pytest działa na hoście, nie w kontenerze, i trafia w `localhost:3100` / `:5432` według `BASE_URL` i `DATABASE_URL` z `.env`. Kontenerów nie restartuję między testami; przebudowuję je (`--build`) tylko po zmianie aplikacji, a świeżą bazę dostaję przez `down -v`. Żeby uruchomić te same testy na stagingu, zmieniam `BASE_URL`, a przy fixtures z SQL także `DATABASE_URL`.
 - **Dlaczego testy poza kontenerem:** debugowanie i podgląd przeglądarki działają bez konfiguracji. Alternatywa: fixture startująca compose (`pytest-docker`) — jeden klik, ale minuta czekania na każde uruchomienie.
 - **Dowód:** `docker-compose.yml`, `.env.example`, sekcja 3 — środowisko testowe.
 
@@ -541,7 +542,7 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
   | Obraz (image) | zbudowany, niezmienny pakiet | obraz sklepu |
   | Kontener | uruchomiony obraz (odizolowany proces) | działający sklep na porcie 3000 |
   | docker-compose | opis kilku kontenerów działających razem | sklep + Postgres + sieć między nimi |
-  | Wystawienie portu | `host:kontener` — udostępnia port kontenera na hoście | `3000:3000`, `5432:5432` |
+  | Wystawienie portu | `host:kontener` — udostępnia port kontenera na hoście | `127.0.0.1:3100:3000`, `127.0.0.1:5432:5432` |
   | Volume | dane, które przeżywają restart kontenera | w testach celowo usuwane (`down -v`) |
 
 - **Kontener ≠ maszyna wirtualna:** dzieli jądro systemu z hostem, więc startuje w sekundy i zużywa mało zasobów.

@@ -12,7 +12,7 @@ Dziś sklep lokalnie działa na SQLite, a na Vercelu na Neon Postgres — Docker
 
 ## Cele
 
-- `docker compose up --build --wait` stawia Postgres, przygotowuje bazę (schemat + seed) i uruchamia sklep na `http://localhost:3000`.
+- `docker compose up --build --wait` stawia Postgres, przygotowuje bazę (schemat + seed) i uruchamia sklep na `http://localhost:3100`.
 - Postgres dostępny dla testów DB na `localhost:5432`.
 - `docker compose down -v` + ponowny `up` = świeża baza.
 - Ten sam compose działa lokalnie (Windows + Docker Desktop/WSL2) i na runnerze Ubuntu.
@@ -85,7 +85,7 @@ Jeśli `next build` prerenderuje strony katalogu (RSC, ISR) i czyta przy tym baz
 |---|---|---|---|
 | `postgres` | `postgres:16` | `jersa/jersa/jersa`, port `5432:5432`, wolumen nazwany | healthcheck `pg_isready` |
 | `db-init` | build sklepu, `target: builder` | `COMMERCE=own`, `DATABASE_URL=postgresql://jersa:jersa@postgres:5432/jersa`; `node scripts/prepare-database.mjs`; kończy się | `depends_on: postgres: service_healthy` |
-| `app` | build sklepu, `target: runner` | te same zmienne, port `3000:3000` | `depends_on: db-init: service_completed_successfully`; healthcheck `node -e "fetch('http://localhost:3000/api/commerce/search?q=castello')…"` sprawdza, że w odpowiedzi jest `zakiet-castello` (obraz slim nie ma `curl`) |
+| `app` | build sklepu, `target: runner` | te same zmienne, port `127.0.0.1:3100:3000` (zmiana z 2026-11-05: 3000 zostaje dla `next dev`) | `depends_on: db-init: service_completed_successfully`; healthcheck `node -e "fetch('http://localhost:3100/api/commerce/search?q=castello')…"` sprawdza, że w odpowiedzi jest `zakiet-castello` (obraz slim nie ma `curl`) |
 
 - Kontekst builda: zmienna `STOREFRONT_PATH` (domyślnie `../../Documents/Repos/jersa-storefront` względem repo testów lokalnie; w CI ścieżka checkoutu). Wzór w `.env.example`.
 - Zmienne runtime sklepu (np. hasło `/admin`) — lista od Groka, trafiają do `.env.example` repo testów.
@@ -99,7 +99,7 @@ Jeśli `next build` prerenderuje strony katalogu (RSC, ISR) i czyta przy tym baz
 
 **Całość (ja, po pushu sklepu):**
 - `docker compose up --build --wait` kończy się sukcesem.
-- `GET http://localhost:3000/api/commerce/search?q=castello` → produkt `zakiet-castello`.
+- `GET http://localhost:3100/api/commerce/search?q=castello` → produkt `zakiet-castello`.
 - Strona główna i PDP CASTELLO renderują się ze zdjęciami.
 - `psql`/psycopg na `localhost:5432` widzi tabelę `ProductRow` z 5 produktami.
 - `down -v` + `up` → seed od nowa (5 szt. na rozmiar).
