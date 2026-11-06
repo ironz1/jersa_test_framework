@@ -4,6 +4,7 @@ from jersa.config import Settings
 
 pytest_plugins = [
     "jersa.fixtures.config",
+    "jersa.fixtures.schemas",
 ]
 
 
