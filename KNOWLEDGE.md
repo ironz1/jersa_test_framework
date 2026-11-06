@@ -279,6 +279,8 @@ core/           → konfiguracja, logowanie, klienci, utils
 | Praca w sklepie przez PR-y zamiast pushy na `main` | Przed Etapem 5 | Bramka na PR (ADR-005) działa tylko, gdy zmiany idą przez PR; dziś push na `main` deployuje od razu |
 | Mechanizm bramki na PR sklepu: workflow sklepu sam pobiera repo testów (checkout z tokenem) czy `repository_dispatch` / reusable workflow | Etap 5 | Status musi wrócić do PR-a sklepu; `repository_dispatch` nie raportuje wyniku do PR-a automatycznie, checkout testów w workflow sklepu — tak |
 | Budowanie obrazu sklepu przy każdym przebiegu czy gotowy obraz z GHCR | Etap 5 (optymalizacja) lub Etap 6 | Gotowy obraz skraca start z minut do sekund; ten sam mechanizm posłuży do ECR w AWS |
+| Narzędzie raportów: pytest-html czy Allure | Etap 5 | Raporty trafiają do CI dopiero w Etapie 5; historia przebiegów w Allure ma sens przy regularnych uruchomieniach. Porównanie: sekcja 9 |
+| mypy i pre-commit | Po Etapie 3 | Przy kilku plikach szkieletu koszt konfiguracji przewyższa zysk; po Etapie 3 będzie dość kodu, żeby ocenić |
 | Czy framework też uruchamiać w kontenerze | Najpóźniej Etap 6 (AWS) | Na start framework na hoście (debugowanie); obraz frameworka (np. `mcr.microsoft.com/playwright/python`) ma sens, gdy testy mają działać poza laptopem i CI |
 
 ### ADR-001: Framework w osobnym repozytorium, w Pythonie
@@ -454,6 +456,7 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 17. **Oddziel budowanie obrazu od danych** — obraz nie powinien wymagać bazy do zbudowania, a kryterium „build przechodzi” wymaga dowodu z uruchomienia.
 18. **Sprawdź środowisko zachowaniem, nie tylko statusem** — healthy nie dowodzi, że strony czytają bazę; znacznik w SQL i świeży seed po `down -v` już tak.
 19. **Po każdej zmianie aplikacji porównaj środowiska** — ta sama odpowiedź API na DEV i STG pokazuje, czy różnią się kodem, czy danymi; różnica w danych mówi, czego testy na STG nie mogą zakładać.
+20. **Przejrzyj poprzedni framework przed nowym szkieletem** — lista błędów z dawnego `conftest.py` (globalny stan, zbyt szerokie sprzątanie, brak `assert`) to gotowe wymagania dla nowego.
 
 ---
 
@@ -515,11 +518,35 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Odpowiedź:** CI wybiera się tam, gdzie żyje kod. Repo sklepu jest na GitHubie, deploy na Vercela idzie z GitHuba, a bramka ma blokować PR na GitHubie. Status z GitHub Actions trafia do PR-a i do branch protection od razu. GitLab musiałby kopiować repo (mirror) i odsyłać status przez API, czyli dochodzi jeden element, który może się zepsuć, a nic nie zyskujemy. Na prywatnym repo GitHub daje też więcej darmowych minut (2000 zamiast 400 miesięcznie). GitLab wybrałbym, gdyby firma trzymała kod na GitLabie, zwłaszcza na własnym serwerze; tam mocne są wbudowane rejestry, skanowanie bezpieczeństwa i merge trains. Pojęcia są te same: pipeline, job, runner, service container, cache, artefakty, sekrety, OIDC. Zmienia się składnia YAML, więc przejście z jednego na drugie zajmuje dni, nie tygodnie.
 - **Dowód:** ADR-005, sekcja 3 — CI.
 
-<!--
-### Jak zaprojektowałbyś framework od zera?
-- Odpowiedź:
-- Dowód: sekcja 3, ADR-00X
--->
+### Od czego zacząłbyś budowę frameworka? (Jak zaprojektowałbyś framework od zera?)
+- **Odpowiedź:** od pytań, nie od kodu. Pierwszy test piszę dopiero, gdy wiem, co chronię, gdzie testy będą działać i na jakich danych. Kolejność:
+  1. **Cel i zakres:** po co framework, kto go używa (QA, deweloperzy, CI), co świadomie zostaje poza nim. Rozmowa z zespołem i przegląd istniejących testów, żeby ich nie dublować.
+  2. **Poznanie systemu:** architektura, API (co jest prawdziwym kontraktem), baza, konfiguracja, dane startowe, integracje zewnętrzne do zamockowania.
+  3. **Strategia:** ryzyka, piramida (które poziomy i ile scenariuszy na każdym), strategia danych i izolacji, środowiska.
+  4. **Decyzje zapisane jako ADR:** język, osobne repo czy wspólne, narzędzia, CI. Z alternatywami i uzasadnieniem, żeby po pół roku było wiadomo, dlaczego tak.
+  5. **Powtarzalne środowisko:** aplikacja z bazą i seedem stawiana jedną komendą (Docker). Bez tego testy są niestabilne od pierwszego dnia.
+  6. **Szkielet:** struktura, konfiguracja z `.env`, fixtures, linter, markery.
+  7. **Jeden test na każdym poziomie, przechodzący przez cały proces** (lokalnie i w CI). Dopiero potem dokładam scenariusze.
+  8. **CI jako bramka**, raporty, a potem skalowanie: równoległość, kolejne środowiska, chmura.
+- **U mnie:** Etap 0 to punkty 1–4 (cel, referencja API, seed, ADR-001…005). Etap 1 to punkt 5 (sklep w Dockerze, ADR-006/007). Etap 2 to punkt 6. Pełny opis kroków: sekcja 8.
+- **Czego unikam (z wcześniejszego frameworka budowanego po omacku):** stanu globalnego przekazywanego między testami, sprzątania „wszystkiego, co utworzył użytkownik X” albo „ostatniego rekordu” zamiast własnych rekordów po ID, haseł w repozytorium, jednego wielkiego `conftest.py`.
+- **Co zrobiłbym inaczej:** prosty workflow CI (sam linter) już przy szkielecie, a nie dopiero w Etapie 5. Krótka pętla informacji zwrotnej od pierwszego commita.
+- **Dowód:** sekcje 1, 2 i 8; ADR-001…007.
+
+### Dlaczego `pyproject.toml` zamiast `requirements.txt` i `pytest.ini`?
+- **Odpowiedź:** jeden plik i zablokowane wersje. `pyproject.toml` to standard Pythona (PEP 621), który czytają pip, uv, Poetry i IDE; trzyma zależności oraz konfigurację pytest i ruff. `requirements.txt` zwykle podaje tylko bezpośrednie zależności, a `uv.lock` blokuje wersje wszystkich pakietów, także zależności zależności, więc lokalnie i w CI instaluje się to samo. Wada: `requirements.txt` jest bardziej znany w starszych projektach, ale `uv export` generuje go jedną komendą.
+- **Dowód:** projekt Etapu 2 (D2, D3).
+
+### Dlaczego konfiguracja przez pydantic-settings?
+- **Odpowiedź:** walidacja na starcie zamiast błędu w połowie testów. Brak `BASE_URL` albo zły URL daje czytelny komunikat przed pierwszym testem; z `os.getenv` dostaje się `None` i dziwny błąd gdzieś w `requests`. Do tego typy (IDE podpowiada `settings.base_url`), jedno miejsce na wszystkie zmienne, zmienne środowiskowe wygrywają z `.env` (wygodne w CI), a obiekt daje fixture, więc nie ma stanu globalnego. Alternatywa: `python-dotenv` + `os.getenv`, czyli prościej, ale walidację trzeba pisać ręcznie.
+- **Dowód:** projekt Etapu 2 (D4).
+
+### Do czego służy pydantic?
+- **Odpowiedź:** do walidacji i parsowania danych na podstawie typów Pythona. Kształt danych opisuje się klasą z typami, a pydantic sprawdza dane (zły typ albo brak pola → czytelny błąd), konwertuje je (`"8080"` → `8080`, tekst → `datetime`) i zamienia obiekty na JSON i słowniki. Używany w FastAPI (requesty i odpowiedzi), w konfiguracji aplikacji (pydantic-settings) i przy parsowaniu danych z API. W testach kontraktów mógłby zastąpić jsonschema, ale zostaję przy jsonschema (ADR-002): schemat JSON nie zależy od języka, a dokładność (`additionalProperties: false`) łatwo kontrolować.
+
+### pytest-html czy Allure?
+- **Odpowiedź:** pytest-html to jedna wtyczka i jeden plik HTML, czyli prosty artefakt w CI. Allure daje interaktywny raport: kroki, załączniki, historię przebiegów i trendy, ale wymaga osobnego programu (Java) do wygenerowania raportu; w CI może trafiać jako artefakt albo na GitHub Pages z historią. Wybór odkładam do Etapu 5, bo historia przebiegów ma sens dopiero przy regularnych uruchomieniach w CI. Allure częściej pojawia się w ofertach SDET.
+- **Dowód:** otwarte decyzje (sekcja 4).
 
 ---
 
