@@ -128,7 +128,7 @@ li{margin-bottom:.8mm}
 <tr><td>Na produkcji</td><td class="bad">niemożliwy</td><td class="ok">ta sama zasada, testy tylko czytają</td></tr>
 <tr><td>Koszt</td><td>mały</td><td>każda fixture musi po sobie posprzątać</td></tr>
 </table>
-<p>W Dockerze świeża baza i tak przychodzi za darmo przez <code>down -v</code>. Na STG każde zamówienie zmniejszałoby stan seedu, dlatego testy nie kupują seedowych produktów. Seed nie zawiera wpisów bloga, więc test bloga tworzy własny wpis w ten sam sposób.</p>
+<p>W Dockerze świeża baza i tak przychodzi za darmo przez <code>down -v</code>. Na STG każde zamówienie zmniejszałoby stan seedu, dlatego testy nie kupują seedowych produktów. Seed ma jeden wpis bloga do odczytu; test, który zmienia blog, tworzy własny wpis w ten sam sposób.</p>
 <footer><span>Mapa środowiska testowego · jersa-storefront</span><span>5 / 6</span></footer></section><section class="page">
 <h2>Gdzie jesteśmy teraz</h2>
 <table>
@@ -138,7 +138,7 @@ li{margin-bottom:.8mm}
 <tr><td><code>docker-compose.yml</code> i <code>.env.example</code></td><td class="ok">działają</td></tr>
 <tr><td>Build obrazu w Dockerze</td><td class="ok">przechodzi, także z samego commita</td></tr>
 <tr><td>Kryteria akceptacji lokalnie</td><td class="ok">spełnione na czystej kopii commita</td></tr>
-<tr><td>Push sklepu i deploy na Vercelu</td><td class="wait">czeka na Twój push</td></tr>
+<tr><td>Push sklepu i deploy na Vercelu (<code>91b5669</code>)</td><td class="ok">wdrożone, STG działa</td></tr>
 </table>
 <div class="note"><b>Rozwiązana blokada.</b> Obraz budowany jest bez dostępu do bazy, a strona <code>/blog</code> czyta Prismę bezpośrednio i jest budowana z góry, więc <code>next build</code> kończył się błędem <code>PrismaClientInitializationError</code>. Strona <code>/szycie-na-miare</code> zostawałaby na stałe z danymi z mocka. Po zmianie obie czytają Postgresa, co potwierdził znacznik wstawiony w SQL.</div>
 <table>
@@ -148,10 +148,9 @@ li{margin-bottom:.8mm}
 <tr><td>C</td><td>baza dostępna w czasie <code>docker build</code></td><td>odrzucona: build w dwóch fazach</td></tr>
 <tr><td>D</td><td>tryb <code>--experimental-build-mode compile</code></td><td>odrzucona: eksperymentalny</td></tr>
 </table>
-<p><span class="wait">Następny krok:</span> push sklepu i sprawdzenie, czy deploy na Vercelu jest zielony. To ostatni warunek zamknięcia Etapu 1 i pierwsze sprawdzenie ścieżki Vercela po tych zmianach.</p>
+<p><span class="ok">Etap 1 zamknięty (2026-11-06).</span> Dane na STG odbiegają od seedu, bo zmiany z panelu admina zostają. Dlatego testy na STG sprawdzają kształt odpowiedzi i własne dane <code>test-</code>, a nie wartości z seedu.</p>
 <h3>Co dalej</h3>
 <ol>
-<li><b>Etap 1:</b> push sklepu, sprawdzenie deployu.</li>
 <li><b>Etap 2:</b> szkielet frameworka, <code>conftest.py</code>, konfiguracja z <code>.env</code>, markery, ruff.</li>
 <li><b>Etapy 3–4:</b> pierwsze testy na czterech poziomach, potem dane i równoległość.</li>
 <li><b>Etap 5:</b> GitHub Actions, praca przez PR-y, bramka.</li>

@@ -39,7 +39,7 @@ Zasada: im wyżej w piramidzie, tym mniej scenariuszy. Markery `smoke`, `regress
 Każdy etap: co zrobiłem → czego się nauczyłem → linki do ADR / praktyk.
 
 - [x] **Etap 0 — Przygotowanie (~0,5 dnia):** przełączanie Prismy SQLite ↔ Postgres, lista endpointów i przykładowych odpowiedzi, seed danych
-- [ ] **Etap 1 — Sklep w Dockerze (1–2 dni):** Dockerfile multi-stage (standalone), docker-compose: app + postgres, healthchecki, migracje i seed
+- [x] **Etap 1 — Sklep w Dockerze (1–2 dni):** Dockerfile multi-stage (standalone), docker-compose: app + postgres, healthchecki, migracje i seed
 - [ ] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
 - [ ] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E — ok. 30–50 niezależnych testów
 - [ ] **Etap 4 — Dane i sprzątanie (~1 dzień):** prefiks uuid, teardown po ID, równoległość (pytest-xdist)
@@ -100,7 +100,7 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - Healthchecki: db → `pg_isready`; app → `GET /api/commerce/search?q=castello`, aż wróci CASTELLO (dowód, że seed przeszedł).
 - Obraz musi powtarzać generate + push + seed przy starcie (Vercel robi to w buildzie), bo commitowany schemat to SQLite.
 
-### Etap 1 — 2026-11-01 → (w toku)
+### Etap 1 — 2026-11-01 → 2026-11-06
 
 **Ustalenia z repo sklepu (odczyt przez `gh`, 2026-11-01)**
 - `npm run build` = `prepare-database.mjs && next build` → na Vercelu baza jest przygotowywana **w buildzie**. W `docker build` bazy nie ma, a skrypt bez URL Postgres kończy się po cichu → klient Prismy zostałby pod SQLite. Potrzebny tryb `--generate-only`.
@@ -108,7 +108,7 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - Standalone nie kopiuje `public/` ani `.next/static` — trzeba ręcznie.
 - Stan magazynowy: kolumna `ProductRow.stockBySize` (JSON) per produkt → test może wstawić własny produkt z własnym stanem.
 - Potwierdzone 2026-11-04: `next build` bez bazy pada na `/blog` (Prisma bez `try/catch`), a `/szycie-na-miare` zostawałaby na stałe z danymi z mocka. Rozwiązanie: ADR-007, zadanie dla Groka: [`docs/handoff/2026-11-05-etap-1-docker-fix.md`](docs/handoff/2026-11-05-etap-1-docker-fix.md).
-- Seed nie zawiera wpisów bloga, więc w Dockerze blog startuje pusty; test bloga tworzy własny wpis (Etap 3).
+- Seed nie zawierał wpisów bloga. Od `5e94298` (2026-11-05) tworzy jeden: `kombinezon-zamiast-sukienki` (id `blog-kombinezon`). Testy bloga, które coś zmieniają, i tak tworzą własny wpis (Etap 3).
 - `jersa-storefront.vercel.app` to piaskownica bez ruchu → traktujemy jako **STG**; właściwy sklep będzie na osobnym środowisku (PROD). Push na `main` sklepu deployuje od razu (brak PR-ów).
 - Agent sklepu (Grok) czyta `AGENTS.md` → `CLAUDE.md`; zasady „nie pushuj bez polecenia”, decyzje w `CLAUDE.md` + `docs/PLAN.md`.
 
@@ -123,7 +123,18 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - `tsc` bez błędów. Vitest: 74/74 według Groka; u mnie 44 zielone i 30 pominiętych przez blokadę Prismy (sekcja 6).
 - Nie sprawdzono jeszcze ścieżki Vercela (`npm run build` z Postgresem): potwierdzi ją deploy.
 - **Porty (2026-11-05):** sklep w Dockerze jest na hoście na `127.0.0.1:3100` (w kontenerze nadal 3000), bo `next dev` i Playwright sklepu używają 3000. Bez rozdzielenia ich przeglądarka trafiałaby w kontener ze starym kodem. Port rozdziela tylko uruchomienie: `--build` nadal bierze kod z folderu, w którym pracuje agent sklepu; stabilną wersję daje `STOREFRONT_PATH` wskazujący eksport commita.
-- **Do zamknięcia etapu:** push sklepu i zielony deploy na Vercelu.
+
+**Zamknięcie (2026-11-06, sklep `91b5669` wypchnięty, folder sklepu = `origin/main`, bez niezacommitowanych zmian)**
+- Grok dołożył 5 commitów: stopkę, FAQ, strony prawne, sekcje bloga i wpis w seedzie, nowe teksty strony głównej.
+- Zmiany ważne dla frameworka:
+  - **Schemat:** `BlogPost.blocksJson` (`String`, domyślnie `"[]"`). Kolumna jest dodawana z wartością domyślną, więc `db push` przeszedł na istniejącym wolumenie bez `down -v`.
+  - **Seed:** wpis `kombinezon-zamiast-sukienki` tworzony tylko wtedy, gdy go brakuje. Ma stały układ strony (`blog-kombinezon.tsx`), nie używa `blocksJson`.
+  - **API admina bloga:** zapis przyjmuje pole `blocks` (tekst, zdjęcie z tekstem, karty), co trzeba uwzględnić w schematach `/api/admin/*`. Kontrakt `/api/commerce/*` się nie zmienił.
+  - **`output: "standalone"` tylko przy `DOCKER_BUILD=1`** (ustawiane w Dockerfile), więc Vercel buduje się jak dawniej.
+- Docker: `up -d --build --wait` daje kod 0 po 260 s (`package-lock` bez zmian, przyczyny dłuższego czasu nie badałem). Obrazy: `runner` 411 MB, `builder` 1,33 GB. `/blog` i `/szycie-na-miare` są oznaczone `ƒ`, `/blog/[slug]` `●`; nowe strony (`/faq`, `/regulamin` i inne) są statyczne (`○`). Kody 200: wszystkie strony, wpis bloga, zdjęcia z `public/preview/blog` i `chapters`, wyszukiwarka. Nieistniejący wpis zwraca 404.
+- STG: nowa wersja jest wdrożona (nowy hero, `/faq` 200, wpis bloga z seedu widoczny, a więc seed przeszedł na Neonie). Wpis na STG jest prerenderowany w buildzie (`x-nextjs-prerender: 1`), a w Dockerze renderuje się przy pierwszym wejściu, bo w czasie builda nie ma bazy.
+- **Dane STG odbiegają od seedu:** `search?q=castello` różni się jednym polem (`isNew` na STG `true`, w seedzie `false`). Seed tylko dopisuje brakujące rekordy (`if (existing) continue`), więc zmiany zrobione w adminie na STG zostają. Testy na STG nie mogą więc zakładać wartości z seedu; sprawdzają kształt odpowiedzi (kontrakt) albo własne dane `test-`.
+- Na dysku C: zostało 11 GB (wcześniej 29 GB): kolejne buildy zostawiają stare warstwy i cache.
 
 **Projekt:** [`docs/superpowers/specs/2026-11-01-etap-1-docker-design.md`](docs/superpowers/specs/2026-11-01-etap-1-docker-design.md) · **Notka dla Groka:** [`docs/handoff/2026-11-01-etap-1-docker.md`](docs/handoff/2026-11-01-etap-1-docker.md)
 
@@ -263,7 +274,7 @@ core/           → konfiguracja, logowanie, klienci, utils
 |---|---|---|
 | Strategia stanu magazynowego w testach zamówień | Etap 3, przed pierwszym testem zamówienia | **Kandydat (2026-11-01):** test wstawia własny `ProductRow` (`test-<uuid>`, własne `stockBySize`), zamawia go, teardown usuwa zamówienie i produkt — seed nietknięty (ADR-003). Do potwierdzenia na działającym sklepie |
 | Dostęp testów do bazy STG (Neon) z CI | Etap 3/5 | Fixtures tworzące dane przez SQL na STG wymagają sekretu `DATABASE_URL` Neona w GitHub Actions; ADR-005 zakładał nightly bez testów DB |
-| Wpisy bloga w seedzie | Gdy będą gotowe treści | Seed dziś nie obsługuje bloga. Wymaga pliku z wpisami, zdjęć z `public/` (nie ze `StoredFile`) i samego dopisywania; wpis usunięty w adminie wróci po deployu, jeśli został w pliku |
+| Kolejne wpisy bloga w seedzie | Gdy będą gotowe treści | **Częściowo rozstrzygnięte (2026-11-05):** Grok dodał wpis `kombinezon-zamiast-sukienki` (zdjęcie z `public/`, tylko dopisywanie). Wpis usunięty w adminie wróci po następnym deployu. Do ustalenia, czy kolejne wpisy też trafiają do seedu |
 | Przeniesienie treści bloga na PROD | Przed uruchomieniem właściwego sklepu | Wpisy z admina na STG nie przejdą same: plik w repo albo migracja z bazy |
 | Praca w sklepie przez PR-y zamiast pushy na `main` | Przed Etapem 5 | Bramka na PR (ADR-005) działa tylko, gdy zmiany idą przez PR; dziś push na `main` deployuje od razu |
 | Mechanizm bramki na PR sklepu: workflow sklepu sam pobiera repo testów (checkout z tokenem) czy `repository_dispatch` / reusable workflow | Etap 5 | Status musi wrócić do PR-a sklepu; `repository_dispatch` nie raportuje wyniku do PR-a automatycznie, checkout testów w workflow sklepu — tak |
@@ -442,6 +453,7 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 16. **Zamów obraz aplikacji u jej właściciela** — Dockerfile przy kodzie aplikacji, compose przy testach; wymagania przekazane notką z kryteriami akceptacji, a stałe zasady zapisane w instrukcjach repo aplikacji.
 17. **Oddziel budowanie obrazu od danych** — obraz nie powinien wymagać bazy do zbudowania, a kryterium „build przechodzi” wymaga dowodu z uruchomienia.
 18. **Sprawdź środowisko zachowaniem, nie tylko statusem** — healthy nie dowodzi, że strony czytają bazę; znacznik w SQL i świeży seed po `down -v` już tak.
+19. **Po każdej zmianie aplikacji porównaj środowiska** — ta sama odpowiedź API na DEV i STG pokazuje, czy różnią się kodem, czy danymi; różnica w danych mówi, czego testy na STG nie mogą zakładać.
 
 ---
 
@@ -498,6 +510,10 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 ### Jak izolujesz dane testowe, gdy staging ma trwałą, współdzieloną bazę?
 - **Odpowiedź:** na poziomie **testu**, nie zestawu. Każdy test tworzy własne dane z unikalnym prefiksem (np. własny produkt ze stanem magazynowym) i w teardownie usuwa je po ID. Reset całej bazy przed zestawem odrzuciłem: koliduje z równoległymi przebiegami (nightly + smoke po deployu) i workerami pytest-xdist, niszczy cudze dane, a na produkcji byłby niemożliwy — wolę nawyk, który działa wszędzie. W Dockerze świeża baza na przebieg i tak przychodzi za darmo.
 - **Dowód:** ADR-003 (doprecyzowanie 2026-11-01), sekcja 10 — seed.
+
+### Dlaczego GitHub Actions, a nie GitLab CI?
+- **Odpowiedź:** CI wybiera się tam, gdzie żyje kod. Repo sklepu jest na GitHubie, deploy na Vercela idzie z GitHuba, a bramka ma blokować PR na GitHubie. Status z GitHub Actions trafia do PR-a i do branch protection od razu. GitLab musiałby kopiować repo (mirror) i odsyłać status przez API, czyli dochodzi jeden element, który może się zepsuć, a nic nie zyskujemy. Na prywatnym repo GitHub daje też więcej darmowych minut (2000 zamiast 400 miesięcznie). GitLab wybrałbym, gdyby firma trzymała kod na GitLabie, zwłaszcza na własnym serwerze; tam mocne są wbudowane rejestry, skanowanie bezpieczeństwa i merge trains. Pojęcia są te same: pipeline, job, runner, service container, cache, artefakty, sekrety, OIDC. Zmienia się składnia YAML, więc przejście z jednego na drugie zajmuje dni, nie tygodnie.
+- **Dowód:** ADR-005, sekcja 3 — CI.
 
 <!--
 ### Jak zaprojektowałbyś framework od zera?

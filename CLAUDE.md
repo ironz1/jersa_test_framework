@@ -48,4 +48,4 @@ conftest.py  pytest.ini  requirements.txt  .env.example  docker-compose.yml
 
 ## Status projektu
 
-**Aktualny etap:** Etap 1 — sklep w Dockerze: działa lokalnie (`docker compose up -d --build --wait`); do zamknięcia push sklepu i zielony deploy na Vercelu.
+**Aktualny etap:** Etap 2 — szkielet repo testów (Etap 1 zamknięty 2026-11-06: sklep w Dockerze na `127.0.0.1:3100` przez `docker compose up -d --build --wait`, STG wdrożony z `91b5669`).
