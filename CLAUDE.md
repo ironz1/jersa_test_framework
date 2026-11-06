@@ -53,4 +53,4 @@ conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/
 
 ## Status projektu
 
-**Aktualny etap:** Etap 2 — szkielet repo testów (Etap 1 zamknięty 2026-11-06: sklep w Dockerze na `127.0.0.1:3100` przez `docker compose up -d --build --wait`, STG wdrożony z `91b5669`).
+**Aktualny etap:** Etap 3 — warstwy testów (Etap 2 zamknięty 2026-11-06: szkielet, 4 smoke, testy frameworka, CI zielone; repo publiczne <https://github.com/ironz1/jersa_test_framework>). Sklep w Dockerze: `docker compose up -d --build --wait` (`127.0.0.1:3100`).

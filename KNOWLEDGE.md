@@ -40,7 +40,7 @@ Każdy etap: co zrobiłem → czego się nauczyłem → linki do ADR / praktyk.
 
 - [x] **Etap 0 — Przygotowanie (~0,5 dnia):** przełączanie Prismy SQLite ↔ Postgres, lista endpointów i przykładowych odpowiedzi, seed danych
 - [x] **Etap 1 — Sklep w Dockerze (1–2 dni):** Dockerfile multi-stage (standalone), docker-compose: app + postgres, healthchecki, migracje i seed
-- [ ] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
+- [x] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
 - [ ] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E — ok. 30–50 niezależnych testów
 - [ ] **Etap 4 — Dane i sprzątanie (~1 dzień):** prefiks uuid, teardown po ID, równoległość (pytest-xdist)
 - [ ] **Etap 5 — CI (1–2 dni):** bramka na PR sklepu (główny trigger), push/PR w repo testów, nightly regression, smoke po deployu, raporty i trace jako artefakty — patrz ADR-005
@@ -140,9 +140,11 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 > Implikacje z Etapu 0 (entrypoint z `prepare-database`) zastąpione przez usługę `db-init` — patrz projekt.
 
-### Etap 2 — 2026-11-06 → (w toku)
+### Etap 2 — 2026-11-06 → 2026-11-06
 
-**Co powstało (gałąź `etap-2-szkielet`)**
+**Repo publiczne:** <https://github.com/ironz1/jersa_test_framework> (CI `ci` zielone na `main`).
+
+**Co powstało**
 - Projekt uv (Python 3.12, `pyproject.toml`, `uv.lock`), pakiet `src/jersa/`: `config.py` (Settings), `clients/api_client.py`, `db/connection.py`, `schemas/loader.py`, `pages/product_page.py`, fixtures w `src/jersa/fixtures/`.
 - Fixtures: `settings`, `base_url`, `api_client` (nowa sesja na test), `db` (pomijana bez `DATABASE_URL`), `assert_matches_schema`, `page` z pytest-playwright.
 - Schematy `schemas/product.json` (22 pola) i `schemas/search.json`, spisane z odpowiedzi i `src/commerce/types.ts` sklepu.
@@ -150,10 +152,12 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - `.github/workflows/ci.yml`: ruff i testy frameworka. `README.md`.
 
 **Wyniki**
-- `uv run pytest -m smoke` → 4 passed (Docker); cały zestaw → 22 passed w ok. 1 s.
+- `uv run pytest -m smoke` → 4 passed (Docker); cały zestaw → 26 passed w ok. 1 s (22 + 4 testy dodane po przeglądzie).
 - Kontrakt przechodzi na DEV i na STG; schemat sprawdzony na wszystkich produktach (5 na DEV, 8 na STG).
 - Celowo zepsuty schemat daje `$.products[0]: Additional properties are not allowed ('hidden' was unexpected)`.
 - Bez `DATABASE_URL` test bazy jest pomijany z komunikatem. CI zasymulowane lokalnie bez `.env`: zielone.
+- Przegląd całej gałęzi przez niezależnego recenzenta: 3 ważne uwagi naprawione (hasła w błędzie walidacji, ignorowane `--base-url`, dane osobowe w historii), 7 drobnych odłożonych.
+- Przed pierwszym pushem historia przepisana `git filter-repo --replace-text`: ścieżki `C:\Users\<login>\...` zamienione na względne, usunięte fragmenty prywatnych adresów. Po pushu nie dałoby się tego cofnąć.
 
 **Projekt:** [`docs/superpowers/specs/2026-11-06-etap-2-szkielet-design.md`](docs/superpowers/specs/2026-11-06-etap-2-szkielet-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-06-etap-2-szkielet.md`](docs/superpowers/plans/2026-11-06-etap-2-szkielet.md)
 
@@ -467,6 +471,13 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Jak zapobiec:** kryterium „build przechodzi” wymaga dowodu z uruchomienia; czytanie kodu go nie zastępuje. Zmianę sprawdzać też zachowaniem: znacznik wstawiony w SQL pokazał, które strony naprawdę czytają bazę.
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
+### Pierwszy przebieg CI pada na „Set up job” (Etap 2, 2026-11-06)
+- **Objaw:** `Unable to resolve action astral-sh/setup-uv@v10, unable to find version v10`.
+- **Przyczyna:** `setup-uv` publikuje tylko pełne wersje (`v10.3.3`), bez ruchomego tagu głównej wersji, w przeciwieństwie do `actions/checkout@v7`. Sprawdziłem najnowsze wydanie, ale nie to, czy istnieje tag `v10`.
+- **Rozwiązanie:** `astral-sh/setup-uv@v10.3.3`.
+- **Jak zapobiec:** przed użyciem akcji sprawdzić tag, a nie tylko wydanie (`gh api repos/<owner>/<repo>/git/ref/tags/<tag>`). Pełna wersja albo SHA commita to też bezpieczniejsza praktyka.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
 ### Każde połączenie z Dockerem trwa kilka sekund (Etap 2, 2026-11-06)
 - **Objaw:** test bazy przechodził, ale trwał 5,0 s, dokładnie tyle, ile `connect_timeout`; test API ok. 2 s.
 - **Przyczyna:** na Windows `localhost` rozwiązuje się najpierw na IPv6 `::1`, a porty compose są wystawione tylko na `127.0.0.1` (Etap 1). Każde połączenie czekało do timeoutu na `::1`, a dopiero potem szło po IPv4. Pomiar: `localhost` 5,04 s, `127.0.0.1` 0,02 s.
@@ -527,6 +538,7 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 21. **Zbuduj szkielet z jednym testem na każdy poziom** — kontrakt, API, DB i E2E po jednym teście dowodzą, że każda fixture działa, zanim dojdą dziesiątki scenariuszy.
 22. **Testuj sam framework bez aplikacji** — loader schematów, konfiguracja i klienci mają własne szybkie testy, które CI uruchamia bez Dockera.
 23. **Włącz CI od pierwszego pushu** — nawet sam linter i testy frameworka dają informację zwrotną przy każdym commicie.
+24. **Przed upublicznieniem repo przeskanuj całą historię** — dane osobowe i sekrety z dowolnego commita da się usunąć tylko przed pierwszym pushem (`git filter-repo`).
 
 ---
 
