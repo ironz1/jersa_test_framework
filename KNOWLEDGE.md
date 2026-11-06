@@ -16,7 +16,7 @@
   - Baza: Prisma 6 — SQLite lokalnie, Neon Postgres na Vercelu
   - Hosting: Vercel Hobby; płatności PayU (na razie mock)
   - Istniejące testy: Vitest (65 jednostkowych), Playwright w TS (koszyk, kasa, admin)
-- **Stack frameworka:** Python, pytest, Playwright, requests, psycopg2, jsonschema, pytest-html, pytest-xdist, ruff
+- **Stack frameworka:** Python 3.12 (uv), pytest, Playwright, requests, psycopg 3, jsonschema, pydantic-settings, ruff; później pytest-xdist (Etap 4) i narzędzie raportów (Etap 5)
 - **Cele nauki:** testy na wielu poziomach, Docker, CI/CD (GitHub Actions), AWS
 - **Poza zakresem (na teraz):** zmiany architektury sklepu, Pact, wydzielony backend (Etap 8), Azure DevOps / GitLab CI
 
@@ -27,7 +27,7 @@
 | Jednostkowe (istnieją) | Vitest | Logikę w izolacji |
 | Kontraktu | jsonschema | Kształt odpowiedzi API: pola, typy, błędy |
 | API | pytest, requests | Endpointy, statusy, błędy, autoryzację admina |
-| Weryfikacja bazy | psycopg2, SQL | Stan bazy po wywołaniach API, integralność |
+| Weryfikacja bazy | psycopg 3, SQL | Stan bazy po wywołaniach API, integralność |
 | E2E | Playwright (Python) | Kluczowe przepływy (koszyk, kasa) |
 
 Zasada: im wyżej w piramidzie, tym mniej scenariuszy. Markery `smoke`, `regression`, `contract` przecinają poziomy.
@@ -140,6 +140,23 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 > Implikacje z Etapu 0 (entrypoint z `prepare-database`) zastąpione przez usługę `db-init` — patrz projekt.
 
+### Etap 2 — 2026-11-06 → (w toku)
+
+**Co powstało (gałąź `etap-2-szkielet`)**
+- Projekt uv (Python 3.12, `pyproject.toml`, `uv.lock`), pakiet `src/jersa/`: `config.py` (Settings), `clients/api_client.py`, `db/connection.py`, `schemas/loader.py`, `pages/product_page.py`, fixtures w `src/jersa/fixtures/`.
+- Fixtures: `settings`, `base_url`, `api_client` (nowa sesja na test), `db` (pomijana bez `DATABASE_URL`), `assert_matches_schema`, `page` z pytest-playwright.
+- Schematy `schemas/product.json` (22 pola) i `schemas/search.json`, spisane z odpowiedzi i `src/commerce/types.ts` sklepu.
+- Testy smoke: kontrakt wyszukiwarki, pusty koszyk, CASTELLO w bazie, nagłówek strony produktu. Testy frameworka: 18 (Settings, loader schematów, ApiClient, połączenie z bazą).
+- `.github/workflows/ci.yml`: ruff i testy frameworka. `README.md`.
+
+**Wyniki**
+- `uv run pytest -m smoke` → 4 passed (Docker); cały zestaw → 22 passed w ok. 1 s.
+- Kontrakt przechodzi na DEV i na STG; schemat sprawdzony na wszystkich produktach (5 na DEV, 8 na STG).
+- Celowo zepsuty schemat daje `$.products[0]: Additional properties are not allowed ('hidden' was unexpected)`.
+- Bez `DATABASE_URL` test bazy jest pomijany z komunikatem. CI zasymulowane lokalnie bez `.env`: zielone.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-06-etap-2-szkielet-design.md`](docs/superpowers/specs/2026-11-06-etap-2-szkielet-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-06-etap-2-szkielet.md`](docs/superpowers/plans/2026-11-06-etap-2-szkielet.md)
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -178,7 +195,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 │  pytest (IDE, venv)  ──HTTP──► :3100 ─┐  Docker  │
 │   - API (requests)                    ▼          │
 │   - E2E (Playwright)          app: sklep Next.js │
-│   - DB (psycopg2) ──SQL──► :5432 ─┐   │ SQL      │
+│   - DB (psycopg)  ──SQL──► :5432 ─┐   │ SQL      │
 │                                   ▼   ▼          │
 │                              postgres:16         │
 └──────────────────────────────────────────────────┘
@@ -186,7 +203,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 
 - **W Dockerze jest tylko SUT:** sklep + Postgres. Framework działa **poza** Dockerem, na hoście (IDE, terminal, runner CI) — łatwe debugowanie, breakpointy, widoczna przeglądarka.
 - **Uruchomiony Docker = prywatna instancja sklepu** — jak mały staging na laptopie. Świeżą bazę daje `down -v`; zwykły restart zachowuje dane.
-- **Wystawianie portów** (`ports: ["127.0.0.1:3100:3000"]` w `docker-compose.yml`, format `host:kontener`): sklep widoczny jako `localhost:3100`, baza jako `localhost:5432`. Bez `ports` nic spoza Dockera nie widzi kontenera.
+- **Wystawianie portów** (`ports: ["127.0.0.1:3100:3000"]` w `docker-compose.yml`, format `host:kontener`): sklep widoczny jako `127.0.0.1:3100`, baza jako `127.0.0.1:5432` (w `.env` adres `127.0.0.1`, nie `localhost`: patrz sekcja 6). Bez `ports` nic spoza Dockera nie widzi kontenera.
 - **Wewnątrz Dockera** kontenery rozmawiają po nazwie serwisu (`postgres:5432`), nie przez `localhost`.
 - **Te same testy, różne cele:** testy czytają cel z `.env`: `BASE_URL`, a testy i fixtures używające SQL także `DATABASE_URL`. Bez zmiany obu HTTP poszłoby na STG, a SQL na lokalną bazę.
 
@@ -195,7 +212,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 | Kto stawia | ja, `docker compose up` | Vercel, po deployu |
 | Dane na starcie | zawsze te same (seed) | to, co zostało po poprzednich testach i ludziach |
 | Silnik bazy | Postgres | Postgres (Neon) |
-| Testy DB (psycopg2) | tak, bezpośrednio | zależy od otwartej decyzji o sekrecie Neona w CI; bez niego stan tylko przez API |
+| Testy DB (psycopg 3) | tak, bezpośrednio | zależy od otwartej decyzji o sekrecie Neona w CI; bez niego stan tylko przez API |
 | Co sprawdza | czy kod sklepu działa | czy działa wdrożona wersja |
 | Kiedy | codziennie + CI na push | nightly regression + smoke po deployu |
 
@@ -206,7 +223,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 ### CI — jak to działa (GitHub Actions)
 
 - **Runner:** po zdarzeniu (push, PR, cron) GitHub uruchamia świeżą maszynę wirtualną (Ubuntu z Dockerem, Pythonem, gitem), wykonuje kroki z `.github/workflows/*.yml` i niszczy ją po zakończeniu. Każdy przebieg od zera.
-- **Docker i pytest działają na tym samym runnerze** → `localhost:3100` działa jak na laptopie. Mapa środowiska pasuje do CI 1:1 — „mój komputer” zamienia się na runner.
+- **Docker i pytest działają na tym samym runnerze** → `127.0.0.1:3100` działa jak na laptopie. Mapa środowiska pasuje do CI 1:1 — „mój komputer” zamienia się na runner.
 
 ```
 zdarzenie (PR sklepu / push testów)
@@ -215,7 +232,7 @@ zdarzenie (PR sklepu / push testów)
     2. checkout repo sklepu (gałąź PR-a lub main; prywatne → token)
     3. docker compose up --build --wait   (sklep + Postgres + seed, czeka na healthchecki)
     4. setup Pythona, pip install, playwright install --with-deps chromium
-    5. pytest                             (localhost:3100, :5432)
+    5. pytest                             (127.0.0.1:3100, :5432)
     6. upload raportu, trace, wideo       (if: always() — także po porażce)
     7. docker compose down -v
   → status ✅/❌ przy PR/commicie + artefakty + logi
@@ -362,6 +379,49 @@ core/           → konfiguracja, logowanie, klienci, utils
 - **Konsekwencje:** ten sam obraz działa w każdym środowisku, a build jest oddzielony od danych. Blog traci ISR, więc przed uruchomieniem właściwego sklepu trzeba sprawdzić czas odpowiedzi tych stron. Poprzedni commit powstał bez builda, bo Docker wtedy nie działał; naprawę sprawdzono uruchomieniem.
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
+### ADR-008: Python 3.12, uv i jeden `pyproject.toml`
+- **Data:** 2026-11-06
+- **Kontekst:** szkielet potrzebuje powtarzalnej instalacji lokalnie (Windows) i w CI (Ubuntu). Systemowy Python to 3.11.
+- **Rozważane opcje:**
+  - A — `requirements.txt` + pip + venv — najbardziej znane, ale zwykle bez blokady zależności przechodnich, a konfiguracja pytest i ruff w osobnych plikach
+  - B — Poetry — dojrzałe, ale wolniejsze i z własnym formatem sekcji
+  - C — uv + `pyproject.toml` + `uv.lock` — jeden plik konfiguracji (PEP 621), blokada wszystkich wersji, szybka instalacja, uv sam instaluje Pythona 3.12
+- **Decyzja:** C. Python 3.12 (`.python-version`), konfiguracja pytest i ruff w `pyproject.toml`, bez `pytest.ini` i `requirements.txt`. `[tool.uv] package = false`, bo framework nie jest instalowanym pakietem.
+- **Konsekwencje:** `uv sync --locked` daje lokalnie i w CI te same wersje. Ruff 0.17 formatuje też bloki Pythona w plikach Markdown. `requirements.txt`, gdyby był potrzebny: `uv export`.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### ADR-009: Konfiguracja przez pydantic-settings, kod w `src/jersa`, fixtures w modułach
+- **Data:** 2026-11-06
+- **Kontekst:** poprzedni framework miał stan globalny i jeden `conftest.py` na 2500 linii. Testy mają działać lokalnie, w CI i na STG, równolegle (Etap 4).
+- **Rozważane opcje:**
+  - Konfiguracja: `python-dotenv` + `os.getenv` (prościej, bez walidacji) albo **pydantic-settings** (typy, walidacja przy starcie, zmienne środowiskowe wygrywają z `.env`)
+  - Układ: płaskie `src/{clients,db,...}` (nazwy mogą kolidować z bibliotekami) albo **pakiet `src/jersa/`** dołączany przez `pythonpath = ["src"]`
+  - Fixtures: wszystko w `conftest.py` albo **moduły `src/jersa/fixtures/*.py`** ładowane przez `pytest_plugins`
+- **Decyzja:** pydantic-settings, pakiet `src/jersa/`, fixtures w modułach. `Settings` szuka `.env` po ścieżce absolutnej od katalogu projektu, a fixture `base_url` w głównym `conftest.py` nadpisuje tę z pytest-base-url (z niej korzysta pytest-playwright).
+- **Konsekwencje:** brak albo zły `BASE_URL` daje czytelny błąd przed pierwszym testem; testy działają niezależnie od katalogu uruchomienia. Fixture `_verify_url` z pytest-base-url jest autouse i wymusza `base_url`, więc testy frameworka (`tests/framework/`) mają własną fixture `base_url` z adresem zastępczym i nie potrzebują `.env`.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### ADR-010: psycopg 3 zamiast psycopg2
+- **Data:** 2026-11-06
+- **Kontekst:** testy DB i fixtures danych potrzebują sterownika Postgresa działającego na Windows i w CI.
+- **Rozważane opcje:**
+  - A — psycopg2 — najbardziej rozpowszechniony, ale w trybie utrzymania; wersja ze źródeł wymaga kompilatora
+  - B — psycopg 3 (`psycopg[binary]`) — aktywnie rozwijany następca, prostsze API (`conn.execute`, `dict_row`), gotowe binaria
+- **Decyzja:** B. Połączenie w trybie autocommit, wiersze jako słowniki, `connect_timeout=5`.
+- **Konsekwencje:** niedziałająca baza daje błąd po 5 s zamiast zawieszenia. Bez `DATABASE_URL` (np. STG) testy bazy są pomijane, a nie kończą się błędem.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### ADR-011: CI w repo testów od Etapu 2, bez Dockera
+- **Data:** 2026-11-06
+- **Kontekst:** pierwotny plan dawał CI dopiero w Etapie 5. Repo jest publiczne od Etapu 2, a krótka pętla informacji zwrotnej od pierwszego commita to dobra praktyka.
+- **Rozważane opcje:**
+  - A — CI dopiero w Etapie 5 — zgodnie z planem, ale błędy lintera i testów frameworka wychodzą późno
+  - B — od razu pełne CI z Dockerem — wymaga tokenu do prywatnego repo sklepu i minut na build obrazu
+  - C — teraz tylko ruff i testy frameworka (`tests/framework`), bez Dockera i sekretów
+- **Decyzja:** C. Workflow `.github/workflows/ci.yml` na push i PR do `main`.
+- **Konsekwencje:** przebieg trwa kilkadziesiąt sekund i nie potrzebuje sekretów. Testy smoke na sklepie dalej uruchamia się lokalnie; Docker w CI i bramka na PR sklepu zostają w Etapie 5 (ADR-005).
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
 <!--
 ### ADR-001: <tytuł decyzji>
 - **Data:**
@@ -405,6 +465,13 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Przyczyna:** Vercel ma bazę w czasie builda, a `docker build` nie. Agent sklepu nie mógł uruchomić builda, bo Docker był zawieszony, więc kryterium akceptacji nie zostało sprawdzone. Przegląd samego diffa też tego nie wyłapał.
 - **Rozwiązanie:** ADR-007, `force-dynamic` na `/blog` i `/szycie-na-miare`.
 - **Jak zapobiec:** kryterium „build przechodzi” wymaga dowodu z uruchomienia; czytanie kodu go nie zastępuje. Zmianę sprawdzać też zachowaniem: znacznik wstawiony w SQL pokazał, które strony naprawdę czytają bazę.
+- **Na rozmowie:** <!-- do uzupełnienia -->
+
+### Każde połączenie z Dockerem trwa kilka sekund (Etap 2, 2026-11-06)
+- **Objaw:** test bazy przechodził, ale trwał 5,0 s, dokładnie tyle, ile `connect_timeout`; test API ok. 2 s.
+- **Przyczyna:** na Windows `localhost` rozwiązuje się najpierw na IPv6 `::1`, a porty compose są wystawione tylko na `127.0.0.1` (Etap 1). Każde połączenie czekało do timeoutu na `::1`, a dopiero potem szło po IPv4. Pomiar: `localhost` 5,04 s, `127.0.0.1` 0,02 s.
+- **Rozwiązanie:** w `.env` i `.env.example` adresy `127.0.0.1` zamiast `localhost`. Zestaw z ok. 7 s spadł do 0,06 s.
+- **Jak zapobiec:** test, który „przechodzi, ale wolno”, to sygnał. Czas równy wartości timeoutu prawie zawsze oznacza, że coś na niego czeka.
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
 ### Vitest daje inny wynik u agenta AI (Etap 1, 2026-11-05)
@@ -457,6 +524,9 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 18. **Sprawdź środowisko zachowaniem, nie tylko statusem** — healthy nie dowodzi, że strony czytają bazę; znacznik w SQL i świeży seed po `down -v` już tak.
 19. **Po każdej zmianie aplikacji porównaj środowiska** — ta sama odpowiedź API na DEV i STG pokazuje, czy różnią się kodem, czy danymi; różnica w danych mówi, czego testy na STG nie mogą zakładać.
 20. **Przejrzyj poprzedni framework przed nowym szkieletem** — lista błędów z dawnego `conftest.py` (globalny stan, zbyt szerokie sprzątanie, brak `assert`) to gotowe wymagania dla nowego.
+21. **Zbuduj szkielet z jednym testem na każdy poziom** — kontrakt, API, DB i E2E po jednym teście dowodzą, że każda fixture działa, zanim dojdą dziesiątki scenariuszy.
+22. **Testuj sam framework bez aplikacji** — loader schematów, konfiguracja i klienci mają własne szybkie testy, które CI uruchamia bez Dockera.
+23. **Włącz CI od pierwszego pushu** — nawet sam linter i testy frameworka dają informację zwrotną przy każdym commicie.
 
 ---
 
@@ -488,7 +558,7 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Dowód:** ADR-005, sekcja 10 — shift-left.
 
 ### Jak wygląda Twoja codzienna praca z testami lokalnie?
-- **Odpowiedź:** rano raz `docker compose up -d --build --wait` — compose buduje obraz aplikacji i stawia ją z bazą i seedem w tle. Potem cały dzień uruchamiam testy z IDE (panel Testing, debug z breakpointami, `--headed`) — pytest działa na hoście, nie w kontenerze, i trafia w `localhost:3100` / `:5432` według `BASE_URL` i `DATABASE_URL` z `.env`. Kontenerów nie restartuję między testami; przebudowuję je (`--build`) tylko po zmianie aplikacji, a świeżą bazę dostaję przez `down -v`. Żeby uruchomić te same testy na stagingu, zmieniam `BASE_URL`, a przy fixtures z SQL także `DATABASE_URL`.
+- **Odpowiedź:** rano raz `docker compose up -d --build --wait` — compose buduje obraz aplikacji i stawia ją z bazą i seedem w tle. Potem cały dzień uruchamiam testy z IDE (panel Testing, debug z breakpointami, `--headed`) — pytest działa na hoście, nie w kontenerze, i trafia w `127.0.0.1:3100` / `:5432` według `BASE_URL` i `DATABASE_URL` z `.env`. Kontenerów nie restartuję między testami; przebudowuję je (`--build`) tylko po zmianie aplikacji, a świeżą bazę dostaję przez `down -v`. Żeby uruchomić te same testy na stagingu, zmieniam `BASE_URL`, a przy fixtures z SQL także `DATABASE_URL`.
 - **Dlaczego testy poza kontenerem:** debugowanie i podgląd przeglądarki działają bez konfiguracji. Alternatywa: fixture startująca compose (`pytest-docker`) — jeden klik, ale minuta czekania na każde uruchomienie.
 - **Dowód:** `docker-compose.yml`, `.env.example`, sekcja 3 — środowisko testowe.
 

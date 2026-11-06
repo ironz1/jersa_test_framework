@@ -19,15 +19,17 @@ Sklep jest w osobnym repo — na tym etapie nie zmieniamy jego architektury.
 
 ## Stack frameworka
 
-Python, pytest, Playwright (pytest-playwright), requests, psycopg2, jsonschema, pytest-html, pytest-xdist, ruff. CI: **tylko GitHub Actions** (bez Azure DevOps i GitLab CI). AWS dopiero w Etapie 6.
+Python 3.12 (uv, `pyproject.toml` + `uv.lock`), pytest, Playwright (pytest-playwright), requests, psycopg 3, jsonschema, pydantic-settings, ruff; pytest-xdist od Etapu 4, narzędzie raportów w Etapie 5. CI: **tylko GitHub Actions** (bez Azure DevOps i GitLab CI). AWS dopiero w Etapie 6.
 
 ## Docelowa struktura
 
 ```
 tests/{contract,api,db,e2e}/   # testy wg poziomu
+tests/framework/               # testy samego frameworka (bez sklepu, w CI)
 schemas/                       # schematy JSON per endpoint
-src/{clients,pages,db,schemas}/  # klient HTTP, page objecty, SQL, loader schematów
-conftest.py  pytest.ini  requirements.txt  .env.example  docker-compose.yml
+src/jersa/{clients,pages,db,schemas,fixtures}/  # klient HTTP, page objecty, SQL, loader schematów, fixtures
+src/jersa/config.py            # Settings (pydantic-settings) z .env
+conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/workflows/ci.yml
 ```
 
 ## Konwencje
@@ -37,7 +39,10 @@ conftest.py  pytest.ini  requirements.txt  .env.example  docker-compose.yml
 - Dane testowe: unikalny prefiks uuid w danych każdego testu; teardown usuwa **tylko własne rekordy po ID**. Nigdy nie czyścimy całych tabel.
 - Schematy kontraktów: `additionalProperties: false`, spisywane z realnych odpowiedzi.
 - Testy muszą być niezależne i działać równolegle (pytest-xdist).
-- Sekrety tylko w `.env` (nie commitujemy); wzór w `.env.example`.
+- Sekrety tylko w `.env` (nie commitujemy); wzór w `.env.example`. Repo jest **publiczne**.
+- Zero stanu globalnego: dane między testami tylko przez fixtures. Fixtures w `src/jersa/fixtures/`, rejestrowane w `pytest_plugins` głównego `conftest.py`.
+- Adresy w `.env` przez `127.0.0.1`, nie `localhost` (na Windows `localhost` → najpierw `::1`, a porty compose są tylko na IPv4).
+- Polecenia: `uv run pytest -m smoke`, `uv run pytest tests/framework`, `uv run ruff check`, `uv run ruff format`.
 
 ## Sposób pracy
 

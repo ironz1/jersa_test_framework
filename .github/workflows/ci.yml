@@ -1,0 +1,24 @@
+# Szybka bramka repo testów: linter i testy samego frameworka.
+# Bez Dockera i bez sekretów: sklep w CI to Etap 5 (ADR-005), tu sprawdzamy kod frameworka.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-framework-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Instalacja zależności (wersje z uv.lock)
+        run: uv sync --locked
+      - name: Linter
+        run: uv run ruff check
+      - name: Formatowanie
+        run: uv run ruff format --check
+      - name: Testy frameworka (bez sklepu)
+        run: uv run pytest tests/framework
