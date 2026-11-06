@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search.json",
+  "title": "GET /api/commerce/search?q=",
+  "type": "object",
+  "required": ["products"],
+  "properties": {
+    "products": { "type": "array", "items": { "$ref": "product.json" } }
+  },
+  "additionalProperties": false
+}

@@ -1,6 +1,6 @@
 # jersa-storefront — referencja API (BFF) i dane testowe
 
-> Materiał z Etapu 0. Źródło dla schematów kontraktów (`schemas/`) i testów API.
+> Materiał z Etapu 0, punkt wyjścia dla schematów kontraktów i testów API. Od Etapu 2 aktualny kształt odpowiedzi opisują schematy w `schemas/` (patrz sekcja 7).
 > Zakres: `/api/commerce/*`. Admin (`/api/admin/*`) i `/media/[id]` są poza tym etapem.
 
 ## Zasady ogólne
@@ -136,6 +136,10 @@ Uwagi do schematu:
 ```json
 { "products": [ /* Product CASTELLO */ ] }
 ```
+
+- Pusty `q` zwraca pustą listę.
+- **Product ma dziś 22 pola** (stan 2026-11-06, zgodnie z `src/commerce/types.ts` sklepu). Przykład w sekcji 2 jest z Etapu 0 i nie zawiera nowszych pól: `compareAtPrice` (`Money | null`), `promoPercent`, `lookImages`, `lowestPriorAmount`, `offeredLessThan30Days`.
+- **Źródło prawdy o kształcie odpowiedzi to schematy w `schemas/`** (`search.json`, `product.json`), sprawdzane testem `tests/contract/test_search_contract.py`. Gdy ten dokument i schemat się różnią, rację ma schemat.
 
 - Puste `q` → `{ "products": [] }`.
 - Szuka w `name` i `slug` (lowercase). Ukryte produkty odpadają.

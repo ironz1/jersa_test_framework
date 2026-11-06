@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "product.json",
+  "title": "Product",
+  "description": "Produkt w odpowiedziach /api/commerce/* (search, cart, wishlist). Spisane z odpowiedzi z 2026-11-06 i src/commerce/types.ts sklepu.",
+  "type": "object",
+  "required": [
+    "id",
+    "slug",
+    "shoperId",
+    "name",
+    "price",
+    "compareAtPrice",
+    "promoPercent",
+    "description",
+    "opis",
+    "images",
+    "lookImages",
+    "categorySlugs",
+    "sizes",
+    "madeToMeasure",
+    "isNew",
+    "isPromo",
+    "lowestPriorAmount",
+    "offeredLessThan30Days",
+    "isBestseller",
+    "hidden",
+    "sizeChartSrc",
+    "relatedSlugs"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "slug": { "type": "string" },
+    "shoperId": { "type": "integer" },
+    "name": { "type": "string" },
+    "price": { "$ref": "#/$defs/money" },
+    "compareAtPrice": { "anyOf": [{ "$ref": "#/$defs/money" }, { "type": "null" }] },
+    "promoPercent": { "type": "integer" },
+    "description": { "type": "string" },
+    "opis": { "$ref": "#/$defs/opis" },
+    "images": { "type": "array", "items": { "$ref": "#/$defs/image" } },
+    "lookImages": { "type": "array", "items": { "$ref": "#/$defs/image" } },
+    "categorySlugs": { "type": "array", "items": { "type": "string" } },
+    "sizes": { "type": "array", "items": { "$ref": "#/$defs/size" } },
+    "madeToMeasure": { "type": "boolean" },
+    "isNew": { "type": "boolean" },
+    "isPromo": { "type": "boolean" },
+    "lowestPriorAmount": { "type": "integer" },
+    "offeredLessThan30Days": { "type": "boolean" },
+    "isBestseller": { "type": "boolean" },
+    "hidden": { "type": "boolean" },
+    "sizeChartSrc": { "type": ["string", "null"] },
+    "relatedSlugs": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "money": {
+      "type": "object",
+      "required": ["amount", "currency", "formatted"],
+      "properties": {
+        "amount": { "type": "integer" },
+        "currency": { "const": "PLN" },
+        "formatted": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "opis": {
+      "type": "object",
+      "required": ["intro", "features", "sizesNote", "material"],
+      "properties": {
+        "intro": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "sizesNote": { "type": "string" },
+        "material": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "image": {
+      "type": "object",
+      "required": ["src", "alt"],
+      "properties": {
+        "src": { "type": "string" },
+        "alt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "size": {
+      "type": "object",
+      "required": ["code", "available"],
+      "properties": {
+        "code": { "type": "string" },
+        "available": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
