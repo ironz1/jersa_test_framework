@@ -6,6 +6,7 @@ pytest_plugins = [
     "jersa.fixtures.config",
     "jersa.fixtures.schemas",
     "jersa.fixtures.api",
+    "jersa.fixtures.db",
 ]
 
 
