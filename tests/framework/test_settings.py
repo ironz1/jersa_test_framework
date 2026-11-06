@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from jersa.config import Settings
+from jersa.config import ConfigError, Settings, load_settings, resolve_base_url
 
 
 @pytest.fixture
@@ -71,3 +71,31 @@ def test_env_file_points_to_project_root():
 
 def test_framework_tests_do_not_need_settings(base_url):
     assert base_url == "http://framework-tests.invalid"
+
+
+def test_validation_error_hides_other_secrets(clean_env, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "ADMINSECRET")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:topsecret@h:5432/db")
+    with pytest.raises(ValidationError) as exc:
+        Settings(_env_file=None)
+    assert "ADMINSECRET" not in str(exc.value)
+    assert "topsecret" not in str(exc.value)
+
+
+def test_load_settings_names_variable_and_template(clean_env, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "ADMINSECRET")
+    with pytest.raises(ConfigError, match=r"BASE_URL.*\.env\.example") as exc:
+        load_settings(_env_file=None)
+    assert "ADMINSECRET" not in str(exc.value)
+
+
+def test_cli_base_url_wins_without_reading_settings():
+    def settings_factory():
+        raise AssertionError("settings should not be read when --base-url is given")
+
+    assert resolve_base_url("https://stg.example/", settings_factory) == "https://stg.example"
+
+
+def test_base_url_falls_back_to_settings(clean_env, monkeypatch):
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:3100")
+    assert resolve_base_url(None, lambda: Settings(_env_file=None)) == "http://127.0.0.1:3100"

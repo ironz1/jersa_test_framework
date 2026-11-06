@@ -398,7 +398,7 @@ core/           → konfiguracja, logowanie, klienci, utils
   - Układ: płaskie `src/{clients,db,...}` (nazwy mogą kolidować z bibliotekami) albo **pakiet `src/jersa/`** dołączany przez `pythonpath = ["src"]`
   - Fixtures: wszystko w `conftest.py` albo **moduły `src/jersa/fixtures/*.py`** ładowane przez `pytest_plugins`
 - **Decyzja:** pydantic-settings, pakiet `src/jersa/`, fixtures w modułach. `Settings` szuka `.env` po ścieżce absolutnej od katalogu projektu, a fixture `base_url` w głównym `conftest.py` nadpisuje tę z pytest-base-url (z niej korzysta pytest-playwright).
-- **Konsekwencje:** brak albo zły `BASE_URL` daje czytelny błąd przed pierwszym testem; testy działają niezależnie od katalogu uruchomienia. Fixture `_verify_url` z pytest-base-url jest autouse i wymusza `base_url`, więc testy frameworka (`tests/framework/`) mają własną fixture `base_url` z adresem zastępczym i nie potrzebują `.env`.
+- **Konsekwencje:** brak albo zły `BASE_URL` daje czytelny błąd przed pierwszym testem; testy działają niezależnie od katalogu uruchomienia. Fixture `_verify_url` z pytest-base-url jest autouse i wymusza `base_url`, więc testy frameworka (`tests/framework/`) mają własną fixture `base_url` z adresem zastępczym i nie potrzebują `.env`. Opcja `--base-url` z linii poleceń wygrywa z `BASE_URL` z `.env` (wcześniej była po cichu ignorowana i testy szły na DEV). Błąd konfiguracji ma postać jednej linii ze zmienną i `.env.example`, a `hide_input_in_errors=True` nie pozwala pydanticowi wypisać haseł z innych zmiennych.
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
 ### ADR-010: psycopg 3 zamiast psycopg2
