@@ -20,5 +20,6 @@ jobs:
         run: uv run ruff check
       - name: Formatowanie
         run: uv run ruff format --check
+      # -n 0: 67 szybkich testów trwa 0,5 s w jednym procesie, a start 4 procesów dodaje ok. 4 s
       - name: Testy frameworka (bez sklepu)
-        run: uv run pytest tests/framework
+        run: uv run pytest tests/framework -n 0
