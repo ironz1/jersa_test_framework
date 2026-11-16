@@ -22,7 +22,8 @@ Gdy Docker nie odpowiada: `docker version` ma pokazać wersję serwera. Jeśli z
 
 | Komenda | Co uruchamia |
 |---|---|
-| `uv run pytest` | wszystko (ok. 5 s) |
+| `uv run pytest` | wszystko, na 4 procesach (`-n 4` w `pyproject.toml`; ok. 12 s) |
+| `uv run pytest -n 0` | wszystko w jednym procesie: do debugowania (`--pdb`, `-s`) i podglądu na żywo |
 | `uv run pytest -m smoke` | ścieżkę krytyczną na każdym poziomie |
 | `uv run pytest -m regression` | wszystkie testy sklepu |
 | `uv run pytest -m contract` | testy kontraktu |
@@ -52,10 +53,12 @@ Opcje dopisujesz do dowolnej komendy `uv run pytest`, np. `uv run pytest tests/a
 
 ## 5. E2E z podglądem przeglądarki
 
+Domyślnie testy idą na 4 procesach, więc `--headed` albo `HEADED=true` otworzy 4 okna naraz. Do podglądu jednego testu dodaj `-n 0`.
+
 | Komenda | Co robi |
 |---|---|
-| `uv run pytest tests/e2e --headed` | pokazuje okno przeglądarki |
-| `uv run pytest tests/e2e --headed --slowmo 300` | jak wyżej, każdy krok zwolniony o 300 ms |
+| `uv run pytest tests/e2e --headed -n 0` | pokazuje okno przeglądarki |
+| `uv run pytest tests/e2e --headed --slowmo 300 -n 0` | jak wyżej, każdy krok zwolniony o 300 ms |
 | `uv run pytest tests/e2e --tracing retain-on-failure` | zapisuje ślad (trace) tylko dla testów, które padły |
 | `uv run playwright show-trace test-results/<folder>/trace.zip` | otwiera zapisany ślad: kroki, zrzuty ekranu, sieć |
 | `uv run playwright install chromium` | instaluje przeglądarkę (raz, po `uv sync`) |
@@ -69,7 +72,7 @@ Opcje dopisujesz do dowolnej komendy `uv run pytest`, np. `uv run pytest tests/a
 | `uv run ruff format` | formatuje kod |
 | `uv run ruff format --check` | sprawdza formatowanie bez zmian w plikach (tak robi CI) |
 
-CI uruchamia: `ruff check`, `ruff format --check` i `pytest tests/framework`.
+CI uruchamia: `ruff check`, `ruff format --check` i `pytest tests/framework -n 0` (67 szybkich testów trwa w jednym procesie 0,5 s, a start 4 procesów dodaje ok. 4 s).
 
 ## 7. Macierz śledzenia wymagań
 

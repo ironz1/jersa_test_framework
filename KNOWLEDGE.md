@@ -41,8 +41,8 @@ Każdy etap: co zrobiłem → czego się nauczyłem → linki do ADR / praktyk.
 - [x] **Etap 0 — Przygotowanie (~0,5 dnia):** przełączanie Prismy SQLite ↔ Postgres, lista endpointów i przykładowych odpowiedzi, seed danych
 - [x] **Etap 1 — Sklep w Dockerze (1–2 dni):** Dockerfile multi-stage (standalone), docker-compose: app + postgres, healthchecki, migracje i seed
 - [x] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
-- [ ] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E. **Krok A zrobiony 2026-11-13:** 83 testy sklepu dla zachowań, które sklep ma poprawnie. **Krok B** (kolejne testy API) czeka na zmianę w sklepie
-- [ ] **Etap 4 — Równoległość (~1 dzień):** pytest-xdist. Własne dane testu i sprzątanie po ID zrobione już w Etapie 3 (ADR-012)
+- [x] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E. **Krok A zrobiony 2026-11-13:** 83 testy sklepu dla zachowań, które sklep ma poprawnie. **Krok B** (kolejne testy API) wydzielony poza etap: czeka na zmianę w sklepie i wróci jako osobna praca
+- [x] **Etap 4 — Równoległość (~1 dzień), 2026-11-16:** pytest-xdist, `-n 4` domyślnie (ADR-015). Własne dane testu i sprzątanie po ID zrobione już w Etapie 3 (ADR-012)
 - [ ] **Etap 5 — CI (1–2 dni):** bramka na PR sklepu (główny trigger), push/PR w repo testów, nightly regression, smoke po deployu, raporty i trace jako artefakty — patrz ADR-005
 - [ ] **Etap 6 — AWS (3–5 dni, osobno):** budżet i alerty, ECR (OIDC), RDS, App Runner + VPC connector
 - [ ] **Etap 7 — Dokumentacja (0,5–1 dnia):** README w obu repo, diagram, jak dodać schemat i test
@@ -186,6 +186,24 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 **Projekt:** [`docs/superpowers/specs/2026-11-13-etap-3-warstwy-testow-design.md`](docs/superpowers/specs/2026-11-13-etap-3-warstwy-testow-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-13-etap-3-krok-a-warstwy-testow.md`](docs/superpowers/plans/2026-11-13-etap-3-krok-a-warstwy-testow.md) · **ADR:** 012, 013, 014
 
+### Etap 4 — 2026-11-16 → 2026-11-16
+
+**Co powstało**
+- `pytest-xdist` w grupie `dev`, `-n 4` w `addopts` (`pyproject.toml`). Test `tests/framework/test_pytest_config.py` pilnuje, że xdist jest zainstalowany, a `-n 4` zostaje w konfiguracji.
+- W `ci.yml` testy frameworka idą z `-n 0`.
+- Dokumentacja: `-n 0` do debugowania i podglądu (`docs/komendy.md`, `README.md`, `.env.example`, `CLAUDE.md`).
+
+**Wyniki**
+- Pierwszy przebieg na 4 procesach: 150 passed, **zero kolizji**, bez żadnej poprawki testów. Dzięki własnemu produktowi na test i sesjom koszyka na test (Etap 3) testy już były niezależne.
+- Trzy przebiegi z rzędu na świeżej bazie: za każdym razem 150 passed, w bazie 0 koszyków, przechowalni, zamówień i produktów `test-*`, ta sama suma kontrolna seeda (`db119c26…`). Szczyt połączeń do Postgresa: 10 z limitu 100.
+- **Czas: bez zysku.** Całość trwa ok. 15 s na jednym i na czterech procesach. API, baza i kontrakt: 5,3 → 4,4 s. E2E: 6,3 → 8,0 s, bo każdy z 4 procesów uruchamia własną przeglądarkę. Zestaw frameworka: 0,5 s → 4,8 s (koszt startu procesów), dlatego w CI zostaje `-n 0`.
+
+**Czego się nauczyłem**
+- Równoległość jest przede wszystkim testem niezależności, a nie sposobem na szybkość. Przy 150 krótkich testach i jednym procesie sklepu w Dockerze stały koszt startu procesów i wąskie gardło po stronie sklepu zjadają zysk.
+- Mierzę, zanim uznam, że coś przyspiesza. Zysk pojawi się przy większym zestawie, a wąskie gardło warto wtedy zmierzyć po stronie sklepu.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-16-etap-4-rownoleglosc-design.md`](docs/superpowers/specs/2026-11-16-etap-4-rownoleglosc-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-16-etap-4-rownoleglosc.md`](docs/superpowers/plans/2026-11-16-etap-4-rownoleglosc.md) · **ADR:** 015
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -207,7 +225,7 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 | Czas budowy obrazu sklepu w CI | Kilka minut na przebieg; później cache warstw lub gotowy obraz z GHCR |
 | Vercel preview | Deployment Protection — sprawdzić bypass dla testów |
 | Brak endpointów kasujących | Sprzątanie zamówień, płatności i opinii przez SQL |
-| Stan magazynowy (5 szt./rozmiar) | Zamówienia zdejmują stan — równoległe testy mogą go wyczerpać; teardown przywraca stan lub testy używają różnych rozmiarów |
+| Stan magazynowy (5 szt./rozmiar) | ✅ Wyjaśnione (ADR-012, Etap 4): własny produkt na test; 3 przebiegi na 4 procesach bez kolizji |
 | Brak migracji (`db push`) | Zmiana schematu w sklepie może cicho zepsuć zapytania SQL w testach DB |
 
 ---
@@ -482,6 +500,17 @@ core/           → konfiguracja, logowanie, klienci, utils
 - **Konsekwencje:** publiczne repo jest zawsze zielone i nie opisuje otwartych słabości. Koszt: testy kroku B powstają później, a do tego czasu macierz ich nie pokazuje.
 - **Na rozmowie:** Znalezionych słabości nie publikuję przed naprawą. Zgłaszam je właścicielowi aplikacji, a test dodaję do publicznego repo dopiero wtedy, gdy poprawka jest wdrożona.
 
+### ADR-015: Równoległość `-n 4` w `addopts`, nie w poleceniu
+- **Data:** 2026-11-16
+- **Kontekst:** po Etapie 3 testy mają własne dane, więc można je uruchamiać równolegle. Trzeba było zdecydować, gdzie ustawić liczbę procesów.
+- **Rozważane opcje:**
+  - A — jawnie w poleceniu (`-n 4`): zwykłe `pytest` zostaje jednoprocesowe, ale łatwo zapomnieć o fladze
+  - B — `-n 4` w `addopts`: każdy przebieg równoległy bez myślenia; debugowanie (`--pdb`) i podgląd (`--headed`) wymagają `-n 0`
+  - C — zmienna `WORKERS` w `.env` czytana przez hook przed fixturami: wygodne lokalnie, ale więcej kodu na prosty cel
+- **Decyzja:** B (decyzja właściciela projektu), 4 procesy, dystrybucja domyślna (`load`), E2E też równolegle. Wyjątek: w CI testy frameworka idą z `-n 0`, bo pomiar dał 0,5 s wobec 4,8 s.
+- **Konsekwencje:** zielone 3 przebiegi z rzędu bez kolizji i bez śladów w bazie. Czas całości bez zmian (ok. 15 s), więc zysk to dowód niezależności, a nie szybkość; przyspieszenie pojawi się przy większym zestawie. Koszt: do podglądu przeglądarki i debugowania trzeba pamiętać o `-n 0`. Test `test_pytest_config.py` pilnuje konfiguracji. Marker `serial` i `loadfile` nie były potrzebne; wprowadzamy je dopiero z uzasadnieniem.
+- **Na rozmowie:** Testy uruchamiam domyślnie na czterech procesach, bo to najszybszy sposób, żeby wykryć testy zależne od siebie. U mnie nic się nie wywróciło, bo każdy test ma własne dane, ale mierzyłem też czas i przy tak małym zestawie przyspieszenia nie ma. Do debugowania wyłączam równoległość jednym przełącznikiem.
+
 <!--
 ### ADR-001: <tytuł decyzji>
 - **Data:**
@@ -568,6 +597,13 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Jak zapobiec:** przed buildem `docker system df` i wolne miejsce na dysku (build Next.js potrzebuje ~8–10 GB); okresowo `docker builder prune`; kompaktowanie vhdx po dużych porządkach; ewentualnie przeniesienie dysku Dockera na inny dysk (Settings → Resources → Disk image location). Diagnoza zaczyna się od zasobów (dysk, RAM), nie od restartu.
 - **Przy okazji — lekcja o `.dockerignore`:** stary obraz frameworka z poprzedniej pracy miał warstwę `COPY . /test_root` = 606 MB, bo bez `.dockerignore` trafiło do niego całe repo: `.git`, `.idea`, logi, pobrane pliki i plik z danymi logowania. Obraz można skopiować, wypchnąć do rejestru i rozpakować — wszystko, co w nim jest, trzeba traktować jak opublikowane. Dlatego w Dockerfile sklepu jest `.dockerignore` (`.env*`, `.git`, `node_modules`, `*.db`).
 - **Na rozmowie:** historia „opowiedz o trudnym problemie”: objaw wyglądał na awarię Dockera, a przyczyną były zasoby hosta; najpierw zmierzyłem (dysk, `docker system df`, rozmiar vhdx), dopiero potem sprzątałem — i tylko za zgodą właściciela danych.
+
+### Testy równolegle nie są szybsze (Etap 4, 2026-11-16)
+- **Objaw:** `-n 4` daje ten sam czas co jeden proces (ok. 15 s), E2E nawet wolniej (6,3 → 8,0 s), a zestaw frameworka 10 razy wolniej (0,5 → 4,8 s).
+- **Przyczyna:** każdy z 4 procesów startuje osobno (import, kolekcja testów, własna przeglądarka w E2E), a większość testów trwa ułamek sekundy. Sklep to jeden proces Node w Dockerze, więc to on zostaje wąskim gardłem.
+- **Rozwiązanie:** zostawiony `-n 4` jako dowód niezależności testów, w CI testy frameworka z `-n 0`. Zysk czasu odłożony do chwili, gdy zestaw urośnie (Etap 5, sklep w CI).
+- **Jak zapobiec:** przed ogłoszeniem przyspieszenia zmierzyć czas z równoległością i bez niej, osobno dla każdego poziomu.
+- **Na rozmowie:** Zmierzyłem czas na jednym i na czterech procesach i przy 150 krótkich testach różnicy nie było, bo start procesów zjadał zysk. Dlatego równoległość traktuję najpierw jako sprawdzian niezależności testów, a dopiero potem jako przyspieszenie.
 
 ---
 
@@ -664,6 +700,8 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 30. **Dokładaj testy od dołu piramidy** — najpierw kontrakt i API, potem baza, na końcu kilka ścieżek E2E na gotowych fixtures.
 31. **Zobacz każdy nowy test na czerwono** — celowo zmieniona oczekiwana wartość dowodzi, że test umie wykryć błąd i że komunikat jest czytelny.
 32. **Uruchom cały zestaw kilka razy z rzędu i sprawdź ślady w bazie** — powtarzalność i sprzątanie potwierdza się pomiarem, nie założeniem.
+33. **Włącz równoległość (`-n 4`) i sprawdź, czy testy są niezależne** — pytest-xdist w `addopts`, test pilnujący konfiguracji, trzy przebiegi z kontrolą bazy (ADR-015).
+34. **Zmierz czas z równoległością i bez niej, osobno dla każdego poziomu** — krótki zestaw nie przyspiesza, a start procesów może go spowolnić; tam, gdzie tak jest, wyłącz `-n` (`ci.yml`: `-n 0`).
 
 ---
 
@@ -855,6 +893,18 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Zakres:** bramka na framework sprawdza kod frameworka. Bramka na sklep (testy na kodzie z PR-a aplikacji) to Etap 5.
 - **U mnie dziś:** reguły nie ma. GitHub zwraca „Branch not protected”.
 - **Dowód:** ADR-005, powiązane pytanie „Czym jest quality gate i czym różni się od samego CI?”, słownik: „Quality gate i branch protection”.
+
+### Jak uruchamiasz testy równolegle i co musi być prawdą, żeby to działało?
+- **Odpowiedź:** `pytest-xdist` (`-n 4`) startuje 4 procesy robocze i rozdziela między nie testy. Działa, gdy testy są niezależne: żaden nie zakłada kolejności ani cudzych danych. U mnie każdy test, który coś zmienia, dostaje własny produkt (`test-<hex>`) i własną sesję koszyka, a po teście usuwa tylko własne rekordy po ID. Asercje porównują stan z tym sprzed akcji, nie z liczbami z seeda.
+- **Dowód:** trzy przebiegi z rzędu na 4 procesach: 150 passed, w bazie zero śladów, seed bez zmian (suma kontrolna). ADR-012, ADR-013, ADR-015.
+
+### Co dzieje się z fixturą `scope="session"` przy xdist i co z testem, który pada tylko równolegle?
+- **Odpowiedź:** każdy proces roboczy ma własną kopię fixtur sesyjnych (własna konfiguracja, własne połączenie z bazą, własna przeglądarka), więc nic nie jest współdzielone między procesami. Współdzielone jest tylko to, co poza procesami: baza i sklep. Test, który pada tylko równolegle, ma ukrytą zależność, np. czyta globalne dane albo liczy na kolejność. Naprawiam przyczynę (własne dane testu), a `serial` albo `loadfile` biorę dopiero, gdy test z natury dotyka stanu globalnego, i opisuję wyjątek.
+- **Dowód:** `src/jersa/fixtures/` (fixtury sesyjne: `config`, `db`, `schemas`, `browser`), ADR-015.
+
+### Czy równoległość zawsze przyspiesza testy?
+- **Odpowiedź:** nie. Każdy proces ma stały koszt startu (import, zebranie testów, w E2E własna przeglądarka), więc dla krótkich testów start przewyższa zysk. U mnie zestaw 150 testów trwał ok. 15 s zarówno na jednym, jak i na czterech procesach, E2E było wolniejsze (6,3 → 8,0 s), a 67 szybkich testów frameworka 10 razy wolniejsze (0,5 → 4,8 s), więc w CI idą z `-n 0`. Wąskim gardłem bywa też aplikacja (u mnie jeden proces Node w Dockerze). Dlatego mierzę przed i po.
+- **Dowód:** sekcja 6 („Testy równolegle nie są szybsze”), ADR-015, `ci.yml`.
 
 ---
 

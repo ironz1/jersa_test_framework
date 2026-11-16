@@ -32,7 +32,8 @@ cp .env.example .env                    # uzupełnij STOREFRONT_PATH
 docker compose up -d --build --wait     # sklep na 127.0.0.1:3100, Postgres na 127.0.0.1:5432
 uv sync
 uv run playwright install chromium
-uv run pytest                           # wszystko: ok. 12 s
+uv run pytest                           # wszystko, 4 procesy (-n 4 w pyproject.toml): ok. 12 s
+uv run pytest -n 0                      # jeden proces: debugowanie (--pdb), podgląd --headed
 uv run pytest -m smoke                  # ścieżka krytyczna na każdym poziomie
 uv run pytest -m regression             # wszystkie testy sklepu
 uv run pytest tests/api                 # jeden poziom: contract, api, db albo e2e
