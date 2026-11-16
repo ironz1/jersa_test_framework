@@ -48,7 +48,8 @@ conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/
 - Zero stanu globalnego: dane między testami tylko przez fixtures. Fixtures w `src/jersa/fixtures/`, rejestrowane w `pytest_plugins` głównego `conftest.py`.
 - Adresy w `.env` przez `127.0.0.1`, nie `localhost` (na Windows `localhost` → najpierw `::1`, a porty compose są tylko na IPv4).
 - Macierz śledzenia: każdy test sklepu ma wpis w `docs/traceability.json` (przypadek → wymaganie → funkcja testu), a jego docstring zaczyna się od ID przypadku. Po zmianie danych: `uv run python scripts/build_traceability.py` i commit PDF razem z JSON-em. Pełna instrukcja: `KNOWLEDGE.md` sekcja 7.
-- Polecenia: `uv run pytest -m smoke`, `uv run pytest tests/framework`, `uv run ruff check`, `uv run ruff format`.
+- Równoległość: `uv run pytest` idzie domyślnie na 4 procesach (`-n 4` w `addopts`, ADR-015). Do debugowania i podglądu `--headed` używaj `-n 0`.
+- Polecenia: `uv run pytest -m smoke`, `uv run pytest tests/framework -n 0`, `uv run ruff check`, `uv run ruff format`.
 
 ## Sposób pracy
 
@@ -60,4 +61,4 @@ conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/
 
 ## Status projektu
 
-**Aktualny etap:** Etap 3 — warstwy testów. Krok A zrobiony 2026-11-13 (83 testy sklepu + 65 frameworka, macierz śledzenia); krok B (kolejne testy API) czeka na zmianę w sklepie. Etap 2 zamknięty 2026-11-06; repo publiczne <https://github.com/ironz1/jersa_test_framework>. Sklep w Dockerze: `docker compose up -d --build --wait` (`127.0.0.1:3100`).
+**Aktualny etap:** Etap 4 — równoległość (pytest-xdist, `-n 4`) zrobiony 2026-11-16; następny Etap 5 (CI). Etap 3, krok A zrobiony 2026-11-13 (83 testy sklepu + 65 frameworka, macierz śledzenia; po Etapie 4 frameworka jest 67); krok B (kolejne testy API) czeka na zmianę w sklepie. Etap 2 zamknięty 2026-11-06; repo publiczne <https://github.com/ironz1/jersa_test_framework>. Sklep w Dockerze: `docker compose up -d --build --wait` (`127.0.0.1:3100`).

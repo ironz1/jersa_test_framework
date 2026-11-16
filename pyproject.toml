@@ -13,6 +13,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.4",
 ]
 
@@ -22,7 +23,7 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--strict-markers -ra"
+addopts = "--strict-markers -ra -n 4"
 markers = [
     "smoke: szybkie sprawdzenie, że element działa",
     "regression: pełny zestaw regresji (każdy test sklepu)",
