@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from jersa.config import ConfigError, Settings, load_settings, resolve_base_url
+from jersa.config import ConfigError, Settings, is_headed, load_settings, resolve_base_url
 
 
 @pytest.fixture
@@ -99,3 +99,22 @@ def test_cli_base_url_wins_without_reading_settings():
 def test_base_url_falls_back_to_settings(clean_env, monkeypatch):
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:3100")
     assert resolve_base_url(None, lambda: Settings(_env_file=None)) == "http://127.0.0.1:3100"
+
+
+def test_headed_is_off_by_default(clean_env, monkeypatch):
+    monkeypatch.setenv("BASE_URL", "http://localhost:3100")
+    assert Settings(_env_file=None).headed is False
+
+
+def test_headed_can_be_turned_on_in_env_file(tmp_path, clean_env):
+    env = tmp_path / ".env"
+    env.write_text("BASE_URL=http://localhost:3100\nHEADED=true\n", encoding="utf-8")
+    assert Settings(_env_file=env).headed is True
+
+
+@pytest.mark.parametrize(
+    ("cli_headed", "env_headed", "expected"),
+    [(False, False, False), (True, False, True), (False, True, True), (True, True, True)],
+)
+def test_browser_is_headed_when_cli_or_env_asks(cli_headed, env_headed, expected):
+    assert is_headed(cli_headed, env_headed) is expected

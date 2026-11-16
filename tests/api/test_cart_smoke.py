@@ -2,6 +2,7 @@ import pytest
 
 
 @pytest.mark.smoke
+@pytest.mark.regression
 def test_new_session_gets_empty_cart(api_client):
     response = api_client.get("/api/commerce/cart")
     assert response.status_code == 200

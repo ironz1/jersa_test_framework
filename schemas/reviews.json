@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reviews.json",
+  "title": "GET/POST /api/commerce/reviews",
+  "description": "Spisane z odpowiedzi z 2026-11-13.",
+  "type": "object",
+  "required": [
+    "reviews"
+  ],
+  "properties": {
+    "reviews": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/review"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "review": {
+      "type": "object",
+      "required": [
+        "id",
+        "productSlug",
+        "author",
+        "body"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "productSlug": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

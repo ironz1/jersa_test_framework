@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     base_url: str
     database_url: str | None = None
     admin_password: SecretStr | None = None
+    # Lokalny podgląd testów E2E w oknie przeglądarki. Domyślnie bez okna (tak działa CI).
+    headed: bool = False
 
     @field_validator("base_url")
     @classmethod
@@ -66,3 +68,8 @@ def resolve_base_url(cli_base_url: str | None, settings_factory: Callable[[], Se
     if cli_base_url:
         return cli_base_url.rstrip("/")
     return settings_factory().base_url
+
+
+def is_headed(cli_headed: bool, env_headed: bool) -> bool:
+    """Przeglądarka z oknem, gdy o to prosi opcja `--headed` albo `HEADED=true` w `.env`."""
+    return bool(cli_headed or env_headed)

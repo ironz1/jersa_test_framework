@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "order-created.json",
+  "title": "POST /api/commerce/orders",
+  "description": "Spisane z odpowiedzi z 2026-11-13. Odpowiedź zawiera tylko identyfikatory, nie całe zamówienie.",
+  "type": "object",
+  "required": [
+    "order"
+  ],
+  "properties": {
+    "order": {
+      "type": "object",
+      "required": [
+        "id",
+        "publicToken"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "publicToken": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

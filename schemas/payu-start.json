@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payu-start.json",
+  "title": "POST /api/commerce/payu/start",
+  "description": "Spisane z odpowiedzi z 2026-11-13. Dwa warianty: płatność dostępna albo niedostępna.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "ok",
+        "redirectUrl"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "redirectUrl": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "ok",
+        "reason"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

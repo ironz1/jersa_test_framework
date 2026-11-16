@@ -9,6 +9,8 @@ x-storefront-env: &storefront-env
   COMMERCE: own
   DATABASE_URL: postgresql://jersa:jersa@postgres:5432/jersa
   ADMIN_PASSWORD: ${ADMIN_PASSWORD:-dev-admin}
+  # Tryb płatności testowej.
+  PAYU_MODE: mock
 
 services:
   postgres:

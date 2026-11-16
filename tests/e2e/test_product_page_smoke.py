@@ -5,6 +5,7 @@ from jersa.pages.product_page import ProductPage
 
 
 @pytest.mark.smoke
+@pytest.mark.regression
 def test_product_page_shows_name(page):
     product = ProductPage(page)
     product.open("zakiet-castello")

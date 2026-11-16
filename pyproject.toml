@@ -25,7 +25,7 @@ pythonpath = ["src"]
 addopts = "--strict-markers -ra"
 markers = [
     "smoke: szybkie sprawdzenie, że element działa",
-    "regression: pełny zestaw regresji",
+    "regression: pełny zestaw regresji (każdy test sklepu)",
     "contract: zgodność odpowiedzi API ze schematem",
 ]
 

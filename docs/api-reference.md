@@ -31,6 +31,7 @@
 | 10 | POST | `/api/commerce/orders` | `{ order: { id, publicToken } }` |
 | 11 | POST | `/api/commerce/payu/start` | `{ ok, redirectUrl }` / `{ ok: false, reason }` |
 | 12 | POST | `/api/commerce/payu/notify` | `{ ok, duplicate }` |
+| 13 | DELETE | `/api/commerce/wishlist` | Wishlist |
 
 ### 1. GET /api/commerce/cart
 
@@ -131,6 +132,18 @@ Uwagi do schematu:
 
 → `{ "slugs": ["zakiet-castello"], "products": [ /* Product jak wyżej */ ] }`
 
+Ten sam produkt dodany drugi raz nie tworzy drugiego wpisu. Brak `productSlug` → `"Brak produktu"`.
+
+### 13. DELETE /api/commerce/wishlist
+
+```json
+{ "productSlug": "zakiet-castello" }
+```
+
+→ przechowalnia bez tego produktu, w tym samym kształcie co `GET`: `{ "slugs": [], "products": [] }`. Brak `productSlug` → `"Brak produktu"`.
+
+Endpoint dopisany 2026-11-13: istniał w sklepie, a brakowało go w tej referencji.
+
 ### 7. GET /api/commerce/search?q=castello
 
 ```json
@@ -139,7 +152,7 @@ Uwagi do schematu:
 
 - Pusty `q` zwraca pustą listę.
 - **Product ma dziś 22 pola** (stan 2026-11-06, zgodnie z `src/commerce/types.ts` sklepu). Przykład w sekcji 2 jest z Etapu 0 i nie zawiera nowszych pól: `compareAtPrice` (`Money | null`), `promoPercent`, `lookImages`, `lowestPriorAmount`, `offeredLessThan30Days`.
-- **Źródło prawdy o kształcie odpowiedzi to schematy w `schemas/`** (`search.json`, `product.json`), sprawdzane testem `tests/contract/test_search_contract.py`. Gdy ten dokument i schemat się różnią, rację ma schemat.
+- **Źródło prawdy o kształcie odpowiedzi to schematy w `schemas/`** (od 2026-11-13 dla wszystkich odpowiedzi: `product`, `search`, `cart`, `wishlist`, `reviews`, `order-created`, `payu-start`, `payu-notify`, `error`), sprawdzane testami w `tests/contract/`. Gdy ten dokument i schemat się różnią, rację ma schemat.
 
 - Puste `q` → `{ "products": [] }`.
 - Szuka w `name` i `slug` (lowercase). Ukryte produkty odpadają.
@@ -228,7 +241,8 @@ Mock bez podpisu:
 
 - Źródło: `fixtures/catalog.json` + `scripts/seed-catalog.ts`.
 - Seed dopisuje brakujące slugi, **nie nadpisuje** edytowanych produktów. Opinie CASTELLO są upsert.
-- Stan startowy: **5 szt. na każdy dostępny rozmiar**.
+- Stan startowy: **5 szt. na każdy dostępny rozmiar**. Seed jeszcze się zmieni, więc testy nie zakładają tej liczby (ADR-013).
+- Żaden produkt seeda nie ma procentu promocji (`promoPercent` = 0, także CASTELLO z flagą promocji). Cenę promocyjną testy sprawdzają na własnym produkcie (ADR-012).
 
 | slug | nazwa | cena | kategorie | MTM | new | promo | bestseller |
 |---|---|---|---|---|---|---|---|

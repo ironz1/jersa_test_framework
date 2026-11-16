@@ -2,6 +2,7 @@ import pytest
 
 
 @pytest.mark.smoke
+@pytest.mark.regression
 @pytest.mark.contract
 def test_search_matches_contract(api_client, assert_matches_schema):
     response = api_client.get("/api/commerce/search", params={"q": "castello"})

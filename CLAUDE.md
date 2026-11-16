@@ -28,29 +28,36 @@ tests/{contract,api,db,e2e}/   # testy wg poziomu
 tests/framework/               # testy samego frameworka (bez sklepu, w CI)
 schemas/                       # schematy JSON per endpoint
 src/jersa/{clients,pages,db,schemas,fixtures}/  # klient HTTP, page objecty, SQL, loader schematów, fixtures
+src/jersa/clients/commerce.py  # CommerceApi: jedna metoda na endpoint sklepu (fixtures shop, make_shop)
+src/jersa/db/{products,orders}.py  # własny produkt testu, odczyt zamówień
+src/jersa/traceability.py  scripts/build_traceability.py  docs/traceability.json  # macierz śledzenia
 src/jersa/config.py            # Settings (pydantic-settings) z .env
 conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/workflows/ci.yml
 ```
 
 ## Konwencje
 
-- Markery pytesta: `smoke`, `regression`, `contract` — przecinają poziomy testów.
+- Markery pytesta przecinają poziomy testów: każdy test sklepu ma `regression`, ścieżka krytyczna dodatkowo `smoke`, kontrakt dodatkowo `contract`.
 - Piramida: im wyższy poziom (E2E), tym mniej scenariuszy.
 - Dane testowe: unikalny prefiks uuid w danych każdego testu; teardown usuwa **tylko własne rekordy po ID**. Nigdy nie czyścimy całych tabel.
+- Własny produkt na test (ADR-012): test, który coś kupuje albo dodaje opinię, bierze produkt z fixture `product` / `make_product(...)` (`test-<hex>`), nigdy produkt z seeda. Seed jest tylko czytany. Asercje stanu magazynowego porównują ze stanem sprzed akcji, bez liczb seeda na sztywno (ADR-013).
+- Testy zachowań, które sklep ma dopiero poprawić, nie trafiają do publicznego repo przed poprawką (ADR-014); `xfail` z opisem słabości też nie.
 - Schematy kontraktów: `additionalProperties: false`, spisywane z realnych odpowiedzi.
 - Testy muszą być niezależne i działać równolegle (pytest-xdist).
 - Sekrety tylko w `.env` (nie commitujemy); wzór w `.env.example`. Repo jest **publiczne**.
 - Zero stanu globalnego: dane między testami tylko przez fixtures. Fixtures w `src/jersa/fixtures/`, rejestrowane w `pytest_plugins` głównego `conftest.py`.
 - Adresy w `.env` przez `127.0.0.1`, nie `localhost` (na Windows `localhost` → najpierw `::1`, a porty compose są tylko na IPv4).
+- Macierz śledzenia: każdy test sklepu ma wpis w `docs/traceability.json` (przypadek → wymaganie → funkcja testu), a jego docstring zaczyna się od ID przypadku. Po zmianie danych: `uv run python scripts/build_traceability.py` i commit PDF razem z JSON-em. Pełna instrukcja: `KNOWLEDGE.md` sekcja 7.
 - Polecenia: `uv run pytest -m smoke`, `uv run pytest tests/framework`, `uv run ruff check`, `uv run ruff format`.
 
 ## Sposób pracy
 
 - Cel nauki jest równie ważny jak kod: przy decyzjach tłumacz *dlaczego* i pokazuj alternatywy.
-- Każdą istotną decyzję zapisuj w `KNOWLEDGE.md` jako ADR (sekcja 4); pole „Na rozmowie” zostawiaj do uzupełnienia użytkownikowi.
+- Każdą istotną decyzję zapisuj w `KNOWLEDGE.md` jako ADR (sekcja 4); pole „Na rozmowie” też uzupełniaj (dotyczy też wpisów w sekcji 6): 1–3 proste zdania, które da się powiedzieć na głos na rozmowie rekrutacyjnej, bez lania wody i bez żargonu, którego nie trzeba.
 - Problemy rozwiązane w trakcie → `KNOWLEDGE.md` sekcja 6; postęp etapów → sekcja 2.
+- Po drodze dopisuj pytania rekrutacyjne z odpowiedziami do `KNOWLEDGE.md` sekcja 9 (krótko, z dowodem w projekcie). Priorytet mają tematy najbliższej rozmowy: bazy danych, quality gate, CI/CD, Python.
 - Po każdym istotnym kroku dopisz go do `KNOWLEDGE.md` sekcja 8 (numerowana lista, jedno zdanie: co i po co).
 
 ## Status projektu
 
-**Aktualny etap:** Etap 3 — warstwy testów (Etap 2 zamknięty 2026-11-06: szkielet, 4 smoke, testy frameworka, CI zielone; repo publiczne <https://github.com/ironz1/jersa_test_framework>). Sklep w Dockerze: `docker compose up -d --build --wait` (`127.0.0.1:3100`).
+**Aktualny etap:** Etap 3 — warstwy testów. Krok A zrobiony 2026-11-13 (83 testy sklepu + 65 frameworka, macierz śledzenia); krok B (kolejne testy API) czeka na zmianę w sklepie. Etap 2 zamknięty 2026-11-06; repo publiczne <https://github.com/ironz1/jersa_test_framework>. Sklep w Dockerze: `docker compose up -d --build --wait` (`127.0.0.1:3100`).

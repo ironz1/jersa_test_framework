@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cart.json",
+  "title": "CartView: GET/POST/PATCH/DELETE /api/commerce/cart",
+  "description": "Spisane z odpowiedzi z 2026-11-13. customFit i sizeSurcharge mogą nie występować na starych liniach.",
+  "type": "object",
+  "required": [
+    "id",
+    "lines"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/line"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "line": {
+      "type": "object",
+      "required": [
+        "id",
+        "productSlug",
+        "size",
+        "quantity",
+        "product"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "productSlug": {
+          "type": "string"
+        },
+        "size": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "customFit": {
+          "type": "boolean"
+        },
+        "sizeSurcharge": {
+          "type": "integer"
+        },
+        "product": {
+          "anyOf": [
+            {
+              "$ref": "product.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

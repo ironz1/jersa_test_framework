@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wishlist.json",
+  "title": "Wishlist: GET/POST/DELETE /api/commerce/wishlist",
+  "description": "Spisane z odpowiedzi z 2026-11-13.",
+  "type": "object",
+  "required": [
+    "slugs",
+    "products"
+  ],
+  "properties": {
+    "slugs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "$ref": "product.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}

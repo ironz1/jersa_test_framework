@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payu-notify.json",
+  "title": "POST /api/commerce/payu/notify",
+  "description": "Spisane z odpowiedzi z 2026-11-13.",
+  "type": "object",
+  "required": [
+    "ok",
+    "duplicate"
+  ],
+  "properties": {
+    "ok": {
+      "const": true
+    },
+    "duplicate": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

@@ -41,8 +41,8 @@ Każdy etap: co zrobiłem → czego się nauczyłem → linki do ADR / praktyk.
 - [x] **Etap 0 — Przygotowanie (~0,5 dnia):** przełączanie Prismy SQLite ↔ Postgres, lista endpointów i przykładowych odpowiedzi, seed danych
 - [x] **Etap 1 — Sklep w Dockerze (1–2 dni):** Dockerfile multi-stage (standalone), docker-compose: app + postgres, healthchecki, migracje i seed
 - [x] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
-- [ ] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E — ok. 30–50 niezależnych testów
-- [ ] **Etap 4 — Dane i sprzątanie (~1 dzień):** prefiks uuid, teardown po ID, równoległość (pytest-xdist)
+- [ ] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E. **Krok A zrobiony 2026-11-13:** 83 testy sklepu dla zachowań, które sklep ma poprawnie. **Krok B** (kolejne testy API) czeka na zmianę w sklepie
+- [ ] **Etap 4 — Równoległość (~1 dzień):** pytest-xdist. Własne dane testu i sprzątanie po ID zrobione już w Etapie 3 (ADR-012)
 - [ ] **Etap 5 — CI (1–2 dni):** bramka na PR sklepu (główny trigger), push/PR w repo testów, nightly regression, smoke po deployu, raporty i trace jako artefakty — patrz ADR-005
 - [ ] **Etap 6 — AWS (3–5 dni, osobno):** budżet i alerty, ECR (OIDC), RDS, App Runner + VPC connector
 - [ ] **Etap 7 — Dokumentacja (0,5–1 dnia):** README w obu repo, diagram, jak dodać schemat i test
@@ -160,6 +160,31 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - Przed pierwszym pushem historia przepisana `git filter-repo --replace-text`: ścieżki `C:\Users\<login>\...` zamienione na względne, usunięte fragmenty prywatnych adresów. Po pushu nie dałoby się tego cofnąć.
 
 **Projekt:** [`docs/superpowers/specs/2026-11-06-etap-2-szkielet-design.md`](docs/superpowers/specs/2026-11-06-etap-2-szkielet-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-06-etap-2-szkielet.md`](docs/superpowers/plans/2026-11-06-etap-2-szkielet.md)
+
+### Etap 3, krok A — 2026-11-12 → 2026-11-13
+
+**Co powstało**
+- **Reguły i scenariusze przed kodem.** 24 reguły biznesowe sklepu spisane z kodu i referencji API, potwierdzone przez właściciela sklepu. Z nich 73 przypadki testowe z ID.
+- **Macierz śledzenia wymagań:** `docs/traceability.json` → [`docs/traceability-matrix.pdf`](docs/traceability-matrix.pdf). Opis mechanizmu: sekcja 7.
+- **Klient `CommerceApi`** (`src/jersa/clients/commerce.py`): jedna metoda na endpoint, fixtures `shop` i `make_shop` (dwóch niezależnych klientów w jednym teście).
+- **Własny produkt na test** (ADR-012): `src/jersa/db/products.py`, fixtures `make_product`, `product`, `placed_order`. Produkt `test-<hex>` wstawiany SQL-em, usuwany po teście razem z zamówieniami i opiniami.
+- **7 nowych schematów kontraktu:** koszyk, przechowalnia, opinie, utworzone zamówienie, start płatności, powiadomienie o płatności, błąd 400.
+- **Testy sklepu:** kontrakt 10, API 51, baza 17, E2E 5. Page objecty: produkt, kasa, zamówienie, wyszukiwarka, przechowalnia.
+- `PAYU_MODE: mock` w `docker-compose.yml`: tryb płatności testowej.
+
+**Wyniki**
+- `uv run pytest` → 148 passed w ok. 12 s (83 testy sklepu + 65 testów frameworka). `-m smoke` → 9 passed.
+- Trzy przebiegi z rzędu bez `down -v`: za każdym razem tyle samo zielonych, stan magazynowy seeda bez zmian (ta sama suma kontrolna), w bazie zero produktów, zamówień, opinii, koszyków i przechowalni testów (po przeglądzie: przyrost wierszy koszyków i przechowalni na przebieg spadł z 41 i 5 do 0).
+- Odwrócona kolejność katalogów: zielone. Bez `DATABASE_URL`: testy z własnym produktem pomijane z komunikatem.
+- Kontrola czerwieni w każdej grupie: celowo zmieniona oczekiwana wartość daje czytelną porażkę, np. `$.lines[0]: Additional properties are not allowed ('quantity' was unexpected)` albo `Locator expected to have text '201,00 zł' / Actual value: 200,00 zł`.
+- Usunięcie kolumny z `product_row()` daje `product_row() nie wypełnia wymaganych kolumn ProductRow: ['description']`.
+
+**Czego się nauczyłem**
+- Spisanie reguł przed testami ujawnia rzeczy, których nikt nie zapisał: 8 z 24 reguł wyszło dopiero przy łączeniu przypadków z wymaganiami.
+- Seed nie nadaje się na dane testów, które coś zmieniają: kilkanaście testów zamawia towar, a seed ma po 5 sztuk i żadnego produktu z procentem promocji.
+- Test E2E może potwierdzić płatność przez API zamiast klikania: liczy się krok klienta, nie droga do niego.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-13-etap-3-warstwy-testow-design.md`](docs/superpowers/specs/2026-11-13-etap-3-warstwy-testow-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-13-etap-3-krok-a-warstwy-testow.md`](docs/superpowers/plans/2026-11-13-etap-3-krok-a-warstwy-testow.md) · **ADR:** 012, 013, 014
 
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
@@ -293,7 +318,7 @@ core/           → konfiguracja, logowanie, klienci, utils
 
 | Temat | Kiedy rozstrzygnąć | Dlaczego wtedy |
 |---|---|---|
-| Strategia stanu magazynowego w testach zamówień | Etap 3, przed pierwszym testem zamówienia | **Kandydat (2026-11-01):** test wstawia własny `ProductRow` (`test-<uuid>`, własne `stockBySize`), zamawia go, teardown usuwa zamówienie i produkt — seed nietknięty (ADR-003). Do potwierdzenia na działającym sklepie |
+| Strategia stanu magazynowego w testach zamówień | Etap 3, przed pierwszym testem zamówienia | **Rozstrzygnięte 2026-11-13: ADR-012** (własny produkt na test, potwierdzone na działającym sklepie). Kandydat z 2026-11-01: test wstawia własny `ProductRow` (`test-<uuid>`, własne `stockBySize`), zamawia go, teardown usuwa zamówienie i produkt — seed nietknięty (ADR-003). Do potwierdzenia na działającym sklepie |
 | Dostęp testów do bazy STG (Neon) z CI | Etap 3/5 | Fixtures tworzące dane przez SQL na STG wymagają sekretu `DATABASE_URL` Neona w GitHub Actions; ADR-005 zakładał nightly bez testów DB |
 | Kolejne wpisy bloga w seedzie | Gdy będą gotowe treści | **Częściowo rozstrzygnięte (2026-11-05):** Grok dodał wpis `kombinezon-zamiast-sukienki` (zdjęcie z `public/`, tylko dopisywanie). Wpis usunięty w adminie wróci po następnym deployu. Do ustalenia, czy kolejne wpisy też trafiają do seedu |
 | Przeniesienie treści bloga na PROD | Przed uruchomieniem właściwego sklepu | Wpisy z admina na STG nie przejdą same: plik w repo albo migracja z bazy |
@@ -426,6 +451,37 @@ core/           → konfiguracja, logowanie, klienci, utils
 - **Konsekwencje:** przebieg trwa kilkadziesiąt sekund i nie potrzebuje sekretów. Testy smoke na sklepie dalej uruchamia się lokalnie; Docker w CI i bramka na PR sklepu zostają w Etapie 5 (ADR-005).
 - **Na rozmowie:** <!-- do uzupełnienia -->
 
+### ADR-012: Własny produkt na test
+- **Data:** 2026-11-13
+- **Kontekst:** kilkanaście testów składa zamówienie, a każde zamówienie zdejmuje stan magazynowy. Seed ma po 5 sztuk na rozmiar, jeszcze się zmieni i nie ma produktu z procentem promocji. Zamówień nie da się usunąć przez API.
+- **Rozważane opcje:**
+  - A — fixture wstawia SQL-em własny produkt (`test-<hex>`, własny stan, cena, promocja) i po teście usuwa go razem z jego zamówieniami i opiniami
+  - B — testy zamawiają różne rozmiary i produkty z seeda — działa tylko na świeżej bazie, psuje się przy zmianie seeda, nie da się sprawdzić promocji
+  - C — sprzątanie oddaje stan (anulowanie zamówienia albo `UPDATE`) — test zmienia rekord seeda, czyli łamie zasadę „ruszamy tylko własne dane”
+- **Decyzja:** A (decyzja właściciela projektu). Fixtures `make_product`, `product`, `placed_order`. Seed jest tylko czytany: wyszukiwarka, opinie CASTELLO, strona produktu.
+- **Konsekwencje:** testy przechodzą wielokrotnie bez `down -v`, nie zależą od seeda i są gotowe na równoległość. Koszt: wstawianie przez SQL trzeba poprawić, gdy sklep doda wymaganą kolumnę do `ProductRow` (pilnuje tego osobny test), a testy zamówień wymagają `DATABASE_URL`, więc na STG są dziś pomijane. Funkcja sprzątająca odmawia usunięcia sluga bez prefiksu `test-`. Zamyka otwartą decyzję o stanie magazynowym i doprecyzowuje ADR-003.
+- **Na rozmowie:** Każdy test, który coś kupuje, dostaje własny produkt z własnym stanem i sam po sobie sprząta. Dzięki temu testy nie psują sobie danych, można je uruchamiać wiele razy i równolegle, a zmiana danych startowych ich nie rusza.
+
+### ADR-013: Oczekiwany wynik z reguł biznesowych, asercje względem stanu sprzed akcji
+- **Data:** 2026-11-13
+- **Kontekst:** scenariusze powstały z czytania kodu sklepu. Test napisany „pod kod” zatwierdza także jego błędy. Dane startowe (seed) będą się zmieniać.
+- **Rozważane opcje:**
+  - A — oczekiwane wartości spisane z tego, co sklep akurat zwraca, i liczby z seeda na sztywno („5 sztuk”)
+  - B — oczekiwane wartości z reguł potwierdzonych przez właściciela sklepu; test porównuje stan po akcji ze stanem sprzed akcji („spadł o 2”)
+- **Decyzja:** B. Reguły (R1–R24) są w macierzy śledzenia, każda ze źródłem. Rozbieżność między regułą a sklepem to znalezisko do zgłoszenia, a nie powód do zmiany testu.
+- **Konsekwencje:** test czerwony oznacza złamaną regułę, a nie zmianę danych. Koszt: reguły trzeba spisać i potwierdzić, zanim powstanie test.
+- **Na rozmowie:** Oczekiwany wynik biorę z wymagań, nie z kodu, bo inaczej test potwierdza także błędy. Nie wpisuję na sztywno liczb z danych startowych, tylko sprawdzam różnicę przed i po akcji.
+
+### ADR-014: Testy zachowań czekających na zmianę w sklepie nie trafiają do publicznego repo przed tą zmianą
+- **Data:** 2026-11-13
+- **Kontekst:** repo testów jest publiczne. Część scenariuszy dotyczy zachowań, które sklep ma dopiero poprawić. Test oznaczony `xfail` z opisem byłby publiczną informacją o otwartej słabości.
+- **Rozważane opcje:**
+  - A — wszystkie testy od razu, nieprzechodzące oznaczone `xfail` z powodem
+  - B — dwa kroki: krok A to testy zachowań, które sklep ma poprawnie; krok B to pozostałe testy, pisane po zmianie w sklepie
+- **Decyzja:** B. Lista zgłoszeń i notatka dla repo sklepu zostają lokalnie (wykluczone z gita) do czasu naprawy.
+- **Konsekwencje:** publiczne repo jest zawsze zielone i nie opisuje otwartych słabości. Koszt: testy kroku B powstają później, a do tego czasu macierz ich nie pokazuje.
+- **Na rozmowie:** Znalezionych słabości nie publikuję przed naprawą. Zgłaszam je właścicielowi aplikacji, a test dodaję do publicznego repo dopiero wtedy, gdy poprawka jest wdrożona.
+
 <!--
 ### ADR-001: <tytuł decyzji>
 - **Data:**
@@ -463,6 +519,20 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Jak zapobiec:**
 - **Na rozmowie:** dobra historia do pytania „opowiedz o trudnym problemie”
 -->
+
+### Silnik Dockera odpowiada błędem 500 po starcie (Etap 3, 2026-11-13)
+- **Objaw:** `docker compose ps` wisi ponad 2 minuty. `docker version` zwraca `request returned Internal Server Error for API route`, a chwilę wcześniej `open //./pipe/docker_engine: The system cannot find the file specified`. Sklep pod `127.0.0.1:3100` nie odpowiada.
+- **Przyczyna:** Docker Desktop był w trakcie startu albo jego silnik się zawiesił. Procesy Docker Desktop działały, ale silnik nie przyjmował poleceń.
+- **Rozwiązanie:** restart Docker Desktop, potem `docker compose up -d --build --wait`.
+- **Jak zapobiec:** przed pracą sprawdzić `docker version` (ma pokazać wersję serwera). Polecenia Dockera w skryptach uruchamiać z limitem czasu, żeby zawieszony silnik dawał błąd, a nie czekanie.
+- **Na rozmowie:** Gdy środowisko nie odpowiada, najpierw sprawdzam, czy działa sam silnik Dockera, a dopiero potem szukam błędu w aplikacji. Nie restartuję cudzych kontenerów bez pytania, bo restart silnika zatrzymuje wszystko.
+
+### Testy zamówień wyczerpują stan magazynowy seeda (Etap 3, 2026-11-13)
+- **Objaw:** wykryte przy przeglądzie projektu, przed napisaniem testów: kilkanaście scenariuszy zamawia ten sam produkt z seeda, który ma 5 sztuk na rozmiar. Drugi przebieg bez `down -v` byłby czerwony. Test ceny promocyjnej nie miał na czym działać, bo żaden produkt seeda nie ma procentu promocji.
+- **Przyczyna:** projekt odkładał własne dane testu do Etapu 4, a testy zmieniające dane powstawały już w Etapie 3.
+- **Rozwiązanie:** własny produkt na test (ADR-012), przeniesiony z Etapu 4 do Etapu 3.
+- **Jak zapobiec:** przy projektowaniu testów od razu pytać, które z nich zmieniają dane i ile razy mogą się wykonać na tej samej bazie. Niezależny przegląd projektu przed planem wyłapał to, zanim powstał kod.
+- **Na rozmowie:** Zanim napisałem testy zamówień, policzyłem, ile razy zdejmą stan magazynowy. Wyszło, że dane startowe skończą się w pierwszym przebiegu, więc każdy test dostał własny produkt.
 
 ### `next build` w Dockerze pada, choć commit wyglądał na gotowy (Etap 1, 2026-11-04)
 - **Objaw:** `docker compose up --build` kończy się błędem `PrismaClientInitializationError` przy prerenderze `/blog`. Na Vercelu ten sam kod buduje się bez problemu.
@@ -508,6 +578,53 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Użycie przez innych:** <!-- onboarding, dokumentacja, konwencje -->
 - **Metryki zdrowia:** <!-- czas wykonania, % flaky, liczba testów, pokrycie -->
 
+### Macierz śledzenia wymagań (traceability matrix)
+
+Łączy trzy rzeczy: wymaganie (reguła sklepu, `R…`) → przypadek testowy (ID, np. `A-CART-03`) → test automatyczny (plik i funkcja pytest). Wynik: [`docs/traceability-matrix.pdf`](docs/traceability-matrix.pdf). Wprowadzona 2026-11-13.
+
+**Trzy części mechanizmu**
+
+| Część | Plik | Rola |
+|---|---|---|
+| Dane | `docs/traceability.json` | jedyne miejsce edytowane ręcznie: lista wymagań i lista przypadków |
+| Budowanie PDF | `scripts/build_traceability.py` (logika w `src/jersa/traceability.py`) | czyta dane i generuje PDF; przy niespójnych danych nic nie zapisuje |
+| Strażnik | `tests/framework/test_traceability.py` | w CI sprawdza, czy każdy przypadek ma istniejące wymaganie, czy ID się nie powtarzają i czy każdy przypadek `zautomatyzowany` ma funkcję testu w kodzie |
+
+**Jak dodać nowy test (trzy kroki)**
+
+1. **Kod testu** w katalogu według poziomu: `tests/contract/`, `tests/api/`, `tests/db/` albo `tests/e2e/`. Docstring zaczyna się od ID przypadku:
+   ```python
+   def test_removing_all_lines_empties_cart(shop, product):
+       """A-CART-14: usunięcie wszystkich pozycji zostawia pusty koszyk."""
+   ```
+2. **Wpis w `docs/traceability.json`**, na liście `cases`, obok przypadków z tej samej grupy:
+   ```json
+   {"id": "A-CART-14", "level": "API", "reqs": ["R10"], "status": "zautomatyzowany",
+    "title": "Usunięcie wszystkich pozycji zostawia pusty koszyk",
+    "tests": ["tests/api/test_cart.py::test_removing_all_lines_empties_cart"]}
+   ```
+   `id` to kolejny wolny numer w grupie, `reqs` to reguły, które test sprawdza, `tests` to ścieżka i nazwa funkcji dokładnie jak w kodzie. Pole `smoke: true` tylko dla testów z markerem `smoke`.
+3. **Przebudowa PDF:** `uv run python scripts/build_traceability.py`.
+
+**Inne sytuacje**
+
+| Sytuacja | Co zrobić |
+|---|---|
+| Zmiana nazwy albo usunięcie testu | poprawić pole `tests` (albo usunąć przypadek) w tym samym commicie; inaczej CI jest czerwone |
+| Nowa reguła sklepu | dopisać wymaganie do listy `requirements`; w PDF pojawi się „LUKA”, dopóki nie ma do niej przypadku |
+| Przypadek zaplanowany, testu jeszcze nie ma | status `zaplanowany`; strażnik go nie sprawdza |
+| Test napisany | status `zautomatyzowany` |
+
+Po każdej zmianie danych: przebudować PDF i zacommitować go razem z JSON-em.
+
+**Czego mechanizm nie robi sam**
+
+- Nie przebudowuje PDF automatycznie: bez uruchomienia skryptu PDF pokazuje stary stan.
+- Nie wykrywa testu, którego nie wpisano do JSON-a: strażnik pilnuje tylko tego, co jest w danych.
+- Nie ocenia jakości testu: pokazuje, że test istnieje, a nie, że jest dobry.
+
+Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodawaniu testów się nie zmienia: to mechanizm, nie dane.
+
 ---
 
 ## 8. Kroki wdrożenia (1 → n)
@@ -539,6 +656,14 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 22. **Testuj sam framework bez aplikacji** — loader schematów, konfiguracja i klienci mają własne szybkie testy, które CI uruchamia bez Dockera.
 23. **Włącz CI od pierwszego pushu** — nawet sam linter i testy frameworka dają informację zwrotną przy każdym commicie.
 24. **Przed upublicznieniem repo przeskanuj całą historię** — dane osobowe i sekrety z dowolnego commita da się usunąć tylko przed pierwszym pushem (`git filter-repo`).
+25. **Spisz reguły biznesowe i daj je do potwierdzenia właścicielowi aplikacji** — oczekiwany wynik testu ma pochodzić z wymagań, nie z kodu, który może mieć błąd.
+26. **Sprawdź podejrzenia uruchomieniem, zanim je zgłosisz** — błąd odczytany z kodu to hipoteza; zgłoszenie ma zawierać to, co aplikacja zrobiła naprawdę, i to, co ma robić.
+27. **Nie publikuj otwartych słabości** — testy i opisy zachowań czekających na poprawkę zostają lokalnie do czasu naprawy.
+28. **Połącz wymagania, przypadki i testy macierzą śledzenia** — widać luki w pokryciu, a przy zmianie reguły wiadomo, które testy ruszyć.
+29. **Daj każdemu testowi zmieniającemu dane własne dane** — własny produkt wstawiany przez fixture i usuwany po teście, żeby testy były powtarzalne i niezależne od seeda.
+30. **Dokładaj testy od dołu piramidy** — najpierw kontrakt i API, potem baza, na końcu kilka ścieżek E2E na gotowych fixtures.
+31. **Zobacz każdy nowy test na czerwono** — celowo zmieniona oczekiwana wartość dowodzi, że test umie wykryć błąd i że komunikat jest czytelny.
+32. **Uruchom cały zestaw kilka razy z rzędu i sprawdź ślady w bazie** — powtarzalność i sprzątanie potwierdza się pomiarem, nie założeniem.
 
 ---
 
@@ -629,6 +754,51 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 ### pytest-html czy Allure?
 - **Odpowiedź:** pytest-html to jedna wtyczka i jeden plik HTML, czyli prosty artefakt w CI. Allure daje interaktywny raport: kroki, załączniki, historię przebiegów i trendy, ale wymaga osobnego programu (Java) do wygenerowania raportu; w CI może trafiać jako artefakt albo na GitHub Pages z historią. Wybór odkładam do Etapu 5, bo historia przebiegów ma sens dopiero przy regularnych uruchomieniach w CI. Allure częściej pojawia się w ofertach SDET.
 - **Dowód:** otwarte decyzje (sekcja 4).
+
+### Dlaczego nie testujesz wszystkiego przez UI? (piramida testów)
+- **Odpowiedź:** dla klienta sklep to front, ale gdy „front nie działa”, przyczyna zwykle leży niżej: API zwraca błąd albo w bazie brakuje kolumny, a strona tylko to pokazuje. Test E2E mówi, *że* coś nie działa. Testy API, bazy i kontraktu mówią, *gdzie* i *dlaczego*. Dlatego E2E mam mało, tylko kluczowe ścieżki klienta, a większość scenariuszy sprawdzam niżej, gdzie testy są szybkie i stabilne.
+- **Czego unikam:** odwróconej piramidy, czyli setek wolnych testów przez przeglądarkę, które padają z powodów niezwiązanych z błędem (flaky) i nie wskazują przyczyny.
+- **Dowód:** sekcja 1 — poziomy testów; Etap 3.
+
+### Skąd wiesz, że dane naprawdę zapisały się w bazie?
+- **Odpowiedź:** odpowiedź API mówi tylko, co serwer deklaruje. Dlatego mam osobny poziom testów: akcję wykonuję przez API, a wynik czytam zapytaniem SQL. Po złożeniu zamówienia sprawdzam w tabeli zamówień e-mail, adres, pozycje, sumę, status i termin płatności, a w tabeli produktów stan magazynowy. Sprawdzam też to, czego API nie pokazuje: że odrzucone zamówienie nie zostawiło wiersza ani zmiany stanu, czyli transakcja się wycofała.
+- **Dowód:** `tests/db/test_orders_db.py`, `tests/db/test_payments_db.py`; przypadki D-ORD-01…05 w macierzy.
+
+### Jak przygotowujesz dane testowe i jak po sobie sprzątasz?
+- **Odpowiedź:** fixture pytest z `yield`. Część przed `yield` wstawia do bazy własny produkt testu z unikalnym identyfikatorem, część po `yield` usuwa go razem z jego zamówieniami i opiniami. Sprzątanie wykona się także wtedy, gdy test padnie. Fixture jest fabryką: test może poprosić o wariant, np. produkt z jedną sztuką na stanie albo z promocją 20%. Usuwam tylko własne rekordy po identyfikatorze, a funkcja sprzątająca odmawia, gdy identyfikator nie ma prefiksu testowego.
+- **Czego unikam:** czyszczenia całych tabel i zmieniania danych startowych.
+- **Dowód:** ADR-003, ADR-012; `src/jersa/fixtures/products.py`, `src/jersa/db/products.py`.
+
+### Dlaczego test nie zakłada stałych wartości z seeda?
+- **Odpowiedź:** dane startowe się zmieniają. Test z liczbą „5 sztuk” na sztywno zrobi się czerwony po zmianie seeda, choć aplikacja działa. Sprawdzam więc różnicę: po zamówieniu 2 sztuk stan ma być o 2 mniejszy niż przed zamówieniem. Z seeda używam tylko rzeczy stałych, jak nazwa produktu, i tylko do odczytu.
+- **Dowód:** ADR-013; `tests/db/test_orders_db.py::test_order_reserves_stock`.
+
+### Jak testujesz coś, co zależy od czasu (wygasanie zamówienia)?
+- **Odpowiedź:** nie czekam 30 minut i nie zmieniam zegara serwera. Test składa zamówienie, a potem w bazie cofa termin płatności tego jednego, własnego zamówienia. Następnie wywołuje akcję, przy której sklep sprawdza terminy, i czyta wynik: status „anulowane” i przywrócony stan magazynowy. Osobno sprawdzam, że nowe zamówienie dostaje termin dokładnie 30 minut od utworzenia.
+- **Alternatywy:** wstrzyknięcie zegara w aplikacji (wymaga zmiany w aplikacji) albo skrócenie limitu zmienną środowiskową.
+- **Dowód:** `tests/db/test_payments_db.py::test_expired_order_is_cancelled_and_restocked`, `src/jersa/db/orders.py::backdate_expiry`.
+
+### Co to jest idempotencja i jak ją testujesz?
+- **Odpowiedź:** operacja jest idempotentna, gdy powtórzona daje ten sam skutek co wykonana raz. W płatnościach to konieczne, bo operator może wysłać to samo powiadomienie kilka razy. Testuję to wprost: wysyłam powiadomienie o udanej płatności dwa razy i sprawdzam, że drugie jest rozpoznane jako duplikat, a zamówienie dalej jest opłacone raz. Tak samo start płatności: wywołany dwa razy zwraca ten sam adres.
+- **Dowód:** `tests/api/test_payments.py` (A-PAY-02, A-PAY-06, A-PAY-10).
+
+### Skąd bierzesz scenariusze testowe?
+- **Odpowiedź:** z wymagań, a gdy ich nie ma, najpierw je spisuję. Tu przeczytałem kod i dokumentację API, spisałem reguły biznesowe i dałem je do potwierdzenia właścicielowi sklepu. Dopiero z potwierdzonych reguł powstały przypadki testowe. Kod jest źródłem pytań, nie odpowiedzi: gdy kod robi coś innego, niż mówi reguła, to jest znalezisko. Podejrzenia sprawdzam uruchomieniem, zanim je zgłoszę.
+- **Dowód:** ADR-013; `docs/traceability.json` (24 reguły ze źródłem).
+
+### Do czego służy macierz śledzenia wymagań (traceability matrix)?
+- **Odpowiedź:** łączy wymaganie, przypadek testowy i test automatyczny. Odpowiada na trzy pytania: czy każda reguła ma test, po co istnieje dany test i które testy ruszyć, gdy reguła się zmienia. U mnie dane są w pliku JSON, PDF generuje skrypt, a test w CI pilnuje, żeby każdy przypadek miał wymaganie i istniejącą funkcję testu. Macierz pokazuje, że test istnieje, a nie, że jest dobry.
+- **Kiedy nie warto:** mały zespół bez spisanych wymagań i szybko zmieniający się produkt; wtedy wystarczy identyfikator wymagania w markerze testu albo w raporcie.
+- **Dowód:** `docs/traceability-matrix.pdf`, sekcja 7, `tests/framework/test_traceability.py`.
+
+### Do czego służy `parametrize`?
+- **Odpowiedź:** do uruchomienia tego samego testu na kilku zestawach danych. Każdy zestaw jest osobnym testem w raporcie, więc od razu widać, który wariant padł. Używam go, gdy logika testu jest ta sama, a zmienia się tylko wejście, np. zamówienie bez każdego z pięciu pól adresu po kolei.
+- **Czego unikam:** pętli `for` w teście (pierwsza porażka ukrywa pozostałe) i parametryzacji, w której warianty mają różne asercje.
+- **Dowód:** `tests/api/test_orders.py::test_order_without_shipping_field_is_rejected`.
+
+### Dlaczego klient API nie rzuca wyjątku na błąd 400?
+- **Odpowiedź:** bo błąd 400 bywa oczekiwanym wynikiem testu. Klient zwraca surową odpowiedź, a status sprawdza test. Gdyby klient rzucał wyjątek, testy negatywne musiałyby go łapać, a z porażki zniknęłaby treść odpowiedzi.
+- **Dowód:** `src/jersa/clients/api_client.py`, `src/jersa/clients/commerce.py`.
 
 ---
 
