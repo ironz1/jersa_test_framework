@@ -196,11 +196,11 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 **Wyniki**
 - Pierwszy przebieg na 4 procesach: 150 passed, **zero kolizji**, bez żadnej poprawki testów. Dzięki własnemu produktowi na test i sesjom koszyka na test (Etap 3) testy już były niezależne.
 - Trzy przebiegi z rzędu na świeżej bazie: za każdym razem 150 passed, w bazie 0 koszyków, przechowalni, zamówień i produktów `test-*`, ta sama suma kontrolna seeda (`db119c26…`). Szczyt połączeń do Postgresa: 10 z limitu 100.
-- **Czas: bez zysku.** Całość trwa ok. 15 s na jednym i na czterech procesach. API, baza i kontrakt: 5,3 → 4,4 s. E2E: 6,3 → 8,0 s, bo każdy z 4 procesów uruchamia własną przeglądarkę. Zestaw frameworka: 0,5 s → 4,8 s (koszt startu procesów), dlatego w CI zostaje `-n 0`.
+- **Czas: bez istotnego zysku.** Dwie sesje pomiarowe: tuż po włączeniu 11,2 s (jeden proces) wobec 10,3 s (cztery), po odbudowie bazy ok. 15 s w obu przypadkach. API, baza i kontrakt: 5,3 → 4,4 s. E2E: 6,3 → 8,0 s, bo każdy z 4 procesów uruchamia własną przeglądarkę. Zestaw frameworka: 0,5 s → 4,8 s (koszt startu procesów), dlatego w CI zostaje `-n 0`.
 
 **Czego się nauczyłem**
-- Równoległość jest przede wszystkim testem niezależności, a nie sposobem na szybkość. Przy 150 krótkich testach i jednym procesie sklepu w Dockerze stały koszt startu procesów i wąskie gardło po stronie sklepu zjadają zysk.
-- Mierzę, zanim uznam, że coś przyspiesza. Zysk pojawi się przy większym zestawie, a wąskie gardło warto wtedy zmierzyć po stronie sklepu.
+- Równoległość jest przede wszystkim testem niezależności, a nie sposobem na szybkość. Przy 150 krótkich testach stały koszt startu procesów (a w E2E własnej przeglądarki w każdym) zjada zysk. Czy ogranicza też sklep, nie mierzyłem.
+- Mierzę, zanim uznam, że coś przyspiesza. Dopiero większy zestaw pokaże, czy równoległość się opłaca; wtedy warto zmierzyć też obciążenie sklepu (CPU kontenera, czasy odpowiedzi).
 
 **Projekt:** [`docs/superpowers/specs/2026-11-16-etap-4-rownoleglosc-design.md`](docs/superpowers/specs/2026-11-16-etap-4-rownoleglosc-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-16-etap-4-rownoleglosc.md`](docs/superpowers/plans/2026-11-16-etap-4-rownoleglosc.md) · **ADR:** 015
 
@@ -508,8 +508,8 @@ core/           → konfiguracja, logowanie, klienci, utils
   - B — `-n 4` w `addopts`: każdy przebieg równoległy bez myślenia; debugowanie (`--pdb`) i podgląd (`--headed`) wymagają `-n 0`
   - C — zmienna `WORKERS` w `.env` czytana przez hook przed fixturami: wygodne lokalnie, ale więcej kodu na prosty cel
 - **Decyzja:** B (decyzja właściciela projektu), 4 procesy, dystrybucja domyślna (`load`), E2E też równolegle. Wyjątek: w CI testy frameworka idą z `-n 0`, bo pomiar dał 0,5 s wobec 4,8 s.
-- **Konsekwencje:** zielone 3 przebiegi z rzędu bez kolizji i bez śladów w bazie. Czas całości bez zmian (ok. 15 s), więc zysk to dowód niezależności, a nie szybkość; przyspieszenie pojawi się przy większym zestawie. Koszt: do podglądu przeglądarki i debugowania trzeba pamiętać o `-n 0`. Test `test_pytest_config.py` pilnuje konfiguracji. Marker `serial` i `loadfile` nie były potrzebne; wprowadzamy je dopiero z uzasadnieniem.
-- **Na rozmowie:** Testy uruchamiam domyślnie na czterech procesach, bo to najszybszy sposób, żeby wykryć testy zależne od siebie. U mnie nic się nie wywróciło, bo każdy test ma własne dane, ale mierzyłem też czas i przy tak małym zestawie przyspieszenia nie ma. Do debugowania wyłączam równoległość jednym przełącznikiem.
+- **Konsekwencje:** zielone 3 przebiegi z rzędu bez kolizji i bez śladów w bazie. Czas całości bez zmian (ok. 15 s), więc zysk to dowód niezależności, a nie szybkość. Czy przy większym zestawie się opłaci, trzeba będzie zmierzyć. Koszt: do podglądu przeglądarki i debugowania trzeba pamiętać o `-n 0`; `--pdb` zgłasza to błędem, a `-s` po cichu nie wypisuje nic. `pytest-xdist` jest w grupie `dev`, więc `uv sync --no-dev` i `pytest` zakończą się błędem „unrecognized arguments: -n” (CI robi `uv sync --locked` z grupą `dev`). Test `test_pytest_config.py` pilnuje konfiguracji. Marker `serial` i `loadfile` nie były potrzebne; wprowadzamy je dopiero z uzasadnieniem.
+- **Na rozmowie:** Testy uruchamiam domyślnie na czterech procesach, bo to dobry sposób, żeby wykryć testy zależne od siebie, a każdy przebieg sprawdza to samo bez dodatkowej flagi. U mnie nic się nie wywróciło, bo każdy test ma własne dane, ale mierzyłem też czas i przy tak małym zestawie przyspieszenia nie ma. Do debugowania wyłączam równoległość jednym przełącznikiem.
 
 <!--
 ### ADR-001: <tytuł decyzji>
@@ -599,9 +599,9 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Na rozmowie:** historia „opowiedz o trudnym problemie”: objaw wyglądał na awarię Dockera, a przyczyną były zasoby hosta; najpierw zmierzyłem (dysk, `docker system df`, rozmiar vhdx), dopiero potem sprzątałem — i tylko za zgodą właściciela danych.
 
 ### Testy równolegle nie są szybsze (Etap 4, 2026-11-16)
-- **Objaw:** `-n 4` daje ten sam czas co jeden proces (ok. 15 s), E2E nawet wolniej (6,3 → 8,0 s), a zestaw frameworka 10 razy wolniej (0,5 → 4,8 s).
-- **Przyczyna:** każdy z 4 procesów startuje osobno (import, kolekcja testów, własna przeglądarka w E2E), a większość testów trwa ułamek sekundy. Sklep to jeden proces Node w Dockerze, więc to on zostaje wąskim gardłem.
-- **Rozwiązanie:** zostawiony `-n 4` jako dowód niezależności testów, w CI testy frameworka z `-n 0`. Zysk czasu odłożony do chwili, gdy zestaw urośnie (Etap 5, sklep w CI).
+- **Objaw:** `-n 4` daje ten sam czas co jeden proces (ok. 15 s), E2E nawet wolniej (6,3 → 8,0 s), a zestaw frameworka ok. 8–9 razy wolniej (0,5 → 4,8 s).
+- **Przyczyna:** każdy z 4 procesów startuje osobno (import, kolekcja testów, własna przeglądarka w E2E), a większość testów trwa ułamek sekundy. Czy sklep (jeden proces Node w Dockerze) jest dodatkowym ograniczeniem, nie sprawdzałem: API przyspieszyło (5,3 → 4,4 s), więc nie wygląda na główną przyczynę.
+- **Rozwiązanie:** zostawiony `-n 4` jako dowód niezależności testów, w CI testy frameworka z `-n 0`. Ocena zysku czasu odłożona do chwili, gdy zestaw urośnie (Etap 5, sklep w CI).
 - **Jak zapobiec:** przed ogłoszeniem przyspieszenia zmierzyć czas z równoległością i bez niej, osobno dla każdego poziomu.
 - **Na rozmowie:** Zmierzyłem czas na jednym i na czterech procesach i przy 150 krótkich testach różnicy nie było, bo start procesów zjadał zysk. Dlatego równoległość traktuję najpierw jako sprawdzian niezależności testów, a dopiero potem jako przyspieszenie.
 
@@ -900,10 +900,10 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 
 ### Co dzieje się z fixturą `scope="session"` przy xdist i co z testem, który pada tylko równolegle?
 - **Odpowiedź:** każdy proces roboczy ma własną kopię fixtur sesyjnych (własna konfiguracja, własne połączenie z bazą, własna przeglądarka), więc nic nie jest współdzielone między procesami. Współdzielone jest tylko to, co poza procesami: baza i sklep. Test, który pada tylko równolegle, ma ukrytą zależność, np. czyta globalne dane albo liczy na kolejność. Naprawiam przyczynę (własne dane testu), a `serial` albo `loadfile` biorę dopiero, gdy test z natury dotyka stanu globalnego, i opisuję wyjątek.
-- **Dowód:** `src/jersa/fixtures/` (fixtury sesyjne: `config`, `db`, `schemas`, `browser`), ADR-015.
+- **Dowód:** `src/jersa/fixtures/` (fixtury sesyjne: `settings`, `db`, `schema_registry`, `browser_type_launch_args`), ADR-015.
 
 ### Czy równoległość zawsze przyspiesza testy?
-- **Odpowiedź:** nie. Każdy proces ma stały koszt startu (import, zebranie testów, w E2E własna przeglądarka), więc dla krótkich testów start przewyższa zysk. U mnie zestaw 150 testów trwał ok. 15 s zarówno na jednym, jak i na czterech procesach, E2E było wolniejsze (6,3 → 8,0 s), a 67 szybkich testów frameworka 10 razy wolniejsze (0,5 → 4,8 s), więc w CI idą z `-n 0`. Wąskim gardłem bywa też aplikacja (u mnie jeden proces Node w Dockerze). Dlatego mierzę przed i po.
+- **Odpowiedź:** nie. Każdy proces ma stały koszt startu (import, zebranie testów, w E2E własna przeglądarka), więc dla krótkich testów start przewyższa zysk. U mnie zestaw 150 testów trwał ok. 15 s zarówno na jednym, jak i na czterech procesach, E2E było wolniejsze (6,3 → 8,0 s), a 67 szybkich testów frameworka ok. 8–9 razy wolniejsze (0,5 → 4,8 s), więc w CI idą z `-n 0`. Ograniczeniem bywa też sama aplikacja pod obciążeniem; u mnie tego nie mierzyłem. Dlatego mierzę przed i po.
 - **Dowód:** sekcja 6 („Testy równolegle nie są szybsze”), ADR-015, `ci.yml`.
 
 ---

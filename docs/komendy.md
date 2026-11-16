@@ -22,7 +22,7 @@ Gdy Docker nie odpowiada: `docker version` ma pokazać wersję serwera. Jeśli z
 
 | Komenda | Co uruchamia |
 |---|---|
-| `uv run pytest` | wszystko, na 4 procesach (`-n 4` w `pyproject.toml`; ok. 12 s) |
+| `uv run pytest` | wszystko, na 4 procesach (`-n 4` w `pyproject.toml`; ok. 15 s) |
 | `uv run pytest -n 0` | wszystko w jednym procesie: do debugowania (`--pdb`, `-s`) i podglądu na żywo |
 | `uv run pytest -m smoke` | ścieżkę krytyczną na każdym poziomie |
 | `uv run pytest -m regression` | wszystkie testy sklepu |
@@ -49,7 +49,7 @@ Opcje dopisujesz do dowolnej komendy `uv run pytest`, np. `uv run pytest tests/a
 | `--lf` | uruchamia tylko testy, które ostatnio padły |
 | `-rs` | pokazuje, dlaczego test został pominięty |
 | `--collect-only -q` | wypisuje testy bez uruchamiania |
-| `-s` | pokazuje `print()` z testów |
+| `-s` | pokazuje `print()` z testów; przy domyślnym `-n 4` nic nie wypisze, dodaj `-n 0` |
 
 ## 5. E2E z podglądem przeglądarki
 

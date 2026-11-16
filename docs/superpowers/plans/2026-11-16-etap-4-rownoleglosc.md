@@ -16,7 +16,7 @@
 - `pytest-xdist` w grupie `dev` (`uv add --dev pytest-xdist`), `uv.lock` commitowany.
 - Dystrybucja domyślna (`load`); `loadfile` i marker `serial` tylko po zapisanym uzasadnieniu (ADR).
 - Teardown usuwa tylko własne rekordy po ID; nigdy nie czyścimy całych tabel (CLAUDE.md).
-- Adresy w `.env` przez `127.0.0.1`. Repo jest publiczne: brak sekretów, plików lokalnych (`docs/scenariusze-etap-3.md`, `docs/handoff/*`) nie commitujemy.
+- Adresy w `.env` przez `127.0.0.1`. Repo jest publiczne: brak sekretów, plików lokalnych (wykluczonych w `.git/info/exclude`) nie commitujemy.
 - Polecenia kontrolne: `uv run ruff check`, `uv run ruff format --check`, `uv run pytest`.
 - Praca na gałęzi `etap-4-rownoleglosc` (bramka wymaga PR; push i merge dopiero po zgodzie właściciela).
 
