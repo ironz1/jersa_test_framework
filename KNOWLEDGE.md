@@ -800,6 +800,62 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Odpowiedź:** bo błąd 400 bywa oczekiwanym wynikiem testu. Klient zwraca surową odpowiedź, a status sprawdza test. Gdyby klient rzucał wyjątek, testy negatywne musiałyby go łapać, a z porażki zniknęłaby treść odpowiedzi.
 - **Dowód:** `src/jersa/clients/api_client.py`, `src/jersa/clients/commerce.py`.
 
+### Czym jest ruff?
+- **Odpowiedź:** linter i formatter Pythona w jednym narzędziu, napisany w Rust, więc sprawdza cały projekt w ułamku sekundy. Linter (`ruff check`) wyłapuje błędy i złe praktyki: nieużywane importy, niezdefiniowane nazwy, zły porządek importów, przestarzałą składnię, typowe pułapki w testach pytest. Formatter (`ruff format`) ujednolica wygląd kodu, jak Black. Zastępuje kilka narzędzi naraz (flake8, isort, pyupgrade, Black), więc jest jedna konfiguracja w `pyproject.toml`.
+- **U mnie:** reguły `E`, `F`, `I`, `B`, `UP`, `PT`, długość linii 100. CI uruchamia `ruff check` i `ruff format --check`.
+- **Dowód:** `pyproject.toml` (`[tool.ruff]`), `.github/workflows/ci.yml`.
+
+### Co znaczy `uv run pytest -m contract`?
+- **Odpowiedź:** `uv run` uruchamia polecenie w środowisku projektu, z pakietami w wersjach z `uv.lock`, bez ręcznej aktywacji `.venv`. `pytest` znajduje i uruchamia testy. `-m contract` (marker) wybiera tylko testy oznaczone etykietą `contract`. Wyrażenia łączy się w cudzysłowie: `-m "smoke and contract"`, `-m "regression and not smoke"`.
+- **Marker a katalog:** `-m contract` wybiera po etykiecie, `pytest tests/contract` po położeniu pliku. Marker przydaje się, gdy etykieta przecina katalogi, np. `smoke` mają testy z każdego poziomu.
+- **Literówka:** `--strict-markers` w `pyproject.toml` zamienia nieznany marker (np. `-m contrat`) w błąd, zamiast po cichu wybrać 0 testów.
+- **Dowód:** `pyproject.toml` (`markers`, `addopts`), `docs/komendy.md`.
+
+### Jakie są sposoby markowania testów w pytest?
+- **Odpowiedź:** marker to etykieta przyklejona do testu, po której wybieram zestawy niezależnie od katalogów (smoke po wdrożeniu, regresja w nocy).
+
+  | Sposób | Zasięg |
+  |---|---|
+  | `pytestmark = [...]` w pliku | wszystkie testy w pliku |
+  | `@pytest.mark.smoke` nad funkcją | jeden test |
+  | dekorator albo `pytestmark` w klasie | wszystkie testy klasy |
+  | `pytest.param(..., marks=...)` w `parametrize` | jeden wariant danych |
+  | hook `pytest_collection_modifyitems` w `conftest.py` | według reguły, np. katalogu |
+  | `request.applymarker(...)` | dynamicznie, w trakcie testu |
+
+  Markery z różnych poziomów się sumują: test z `pytestmark = regression` w pliku i `@pytest.mark.smoke` nad funkcją ma oba.
+- **Moja decyzja:** jawny `pytestmark` w pliku zamiast hooka, bo w małym projekcie wolę widzieć marker obok testu. Wada: trzeba go pamiętać przy nowym pliku. Hook nadawałby go automatycznie, ale byłby niewidoczny dla czytającego.
+- **Dowód:** `tests/api/test_cart.py` (`pytestmark` + `@pytest.mark.smoke`), `pyproject.toml`.
+
+### Czym jest hook w pytest i czym różni się od fixture?
+- **Odpowiedź:** hook to funkcja o ustalonej nazwie, którą framework sam wywołuje w określonym momencie pracy, a ja ją tylko piszę. Przykłady: `pytest_collection_modifyitems` (po zebraniu testów: dodaj markery, zmień kolejność), `pytest_addoption` (własna opcja linii poleceń), `pytest_runtest_makereport` (po teście: zrzut ekranu przy porażce). Hooki muszą leżeć w `conftest.py` albo w module z `pytest_plugins`; w pliku z testem nie działają.
+- **Różnica:** fixture wywołuje się z testu, wymieniając ją w argumentach, a pytest dostarcza wynik. Hook wywołuje narzędzie w swoim momencie i rozpoznaje go po nazwie.
+- **Ten sam pomysł:** git hook (skrypt przed commitem), hook w Claude Code (polecenie po akcji agenta).
+- **U mnie:** na razie żadnego hooka pytest nie ma. Pierwszy pojawi się prawdopodobnie przy zrzutach i śladach E2E w Etapie 5.
+
+### Gdzie trzymać fixtury: w `conftest.py` czy w osobnych modułach?
+- **Odpowiedź:** `conftest.py` to domyślne miejsce, które pytest czyta sam, ale nie jedyne. Fixtury można trzymać w modułach i rejestrować listą `pytest_plugins` w głównym `conftest.py`. Wybrałem moduły, bo jeden wielki `conftest.py` szybko robi się nieczytelny (to błąd z poprzedniego frameworka), fixtury są częścią kodu frameworka w `src/jersa/`, a moduł można zwyczajnie importować.
+- **Co zostaje w `conftest.py`:** lista `pytest_plugins` i `base_url`, który nadpisuje fixturę z wtyczki `pytest-base-url`. Testy w `tests/framework/` mają własny `base_url` z adresem zastępczym, bo pytest wybiera najbliższą fixturę.
+- **Kiedy `conftest.py` jest lepszy:** fixtura potrzebna tylko testom jednego katalogu (u mnie `tests/e2e/conftest.py` sprząta koszyk przeglądarki).
+- **Dowód:** ADR-009, `conftest.py`, `src/jersa/fixtures/`.
+
+### Jak konfiguruje się Playwright w Pythonie i jak przełączyć tryb z oknem (headed)?
+- **Odpowiedź:** w Pythonie nie ma odpowiednika `playwright.config.ts`. Konfiguruje się go opcjami pytest (`--browser`, `--headed`, `--slowmo`, `--tracing`, `--video`), `addopts` w `pyproject.toml` oraz fixturami (`browser_context_args` dla rozmiaru okna i języka, `browser_type_launch_args` dla uruchomienia przeglądarki, `base_url`).
+- **Podgląd na żywo:** jednorazowo `--headed` w poleceniu. Na stałe lokalnie `HEADED=true` w `.env`. Nie wpisuję `--headed` do `addopts`, bo plik jest wspólny i CI też próbowałoby otworzyć okno. `.env` nie trafia do repo, więc moje ustawienie nie wpływa na CI. Opcja z linii poleceń i zmienna środowiskowa wygrywają z `.env`.
+- **Dowód:** `src/jersa/config.py` (`headed`, `is_headed`), `src/jersa/fixtures/browser.py`, `.env.example`.
+
+### Co robi plik `ci.yml` i gdzie uruchamia się CI?
+- **Odpowiedź:** `ci.yml` opisuje, co CI robi: zadania i kroki. CI działa na maszynie GitHuba (runner `ubuntu-latest`), nie na moim komputerze, i startuje przy pushu i pull requeście do `main`. U mnie: checkout, instalacja zależności z `uv.lock` (`uv sync --locked`), `ruff check`, `ruff format --check` i `pytest tests/framework`. Bez Dockera, sklepu i `.env`, więc testy sklepu CI jeszcze nie uruchamia (to Etap 5, ADR-005).
+- **Dowód:** `.github/workflows/ci.yml`, ADR-011.
+
+### Czym różni się `ci.yml` od reguły ochrony gałęzi i czy CI to już quality gate?
+- **Odpowiedź:** to dwie osobne rzeczy. `ci.yml` mówi, **co** CI robi, i wgrywa się go pushem. Reguła ochrony gałęzi (branch protection) decyduje, **czy wynik CI blokuje scalenie**, i żyje w ustawieniach repo na GitHubie (Settings → Branches), nie w pliku w repo. Push żadnej reguły nie przenosi: ustawia się ją osobno ręcznie albo przez `gh api`. Z `ci.yml` bierze się tylko nazwa zadania, którą reguła ma wymagać (u mnie `lint-and-framework-tests`).
+- **Czy to bramka:** samo CI nie. Bez reguły czerwony wynik jest ostrzeżeniem, a push wprost na `main` go omija. Bramką staje się, gdy zmiany idą przez pull request, a reguła wymaga zielonego statusu przed scaleniem. Reguła działa na pull requesty, nie na push. Żeby obowiązywała także właściciela repo, trzeba wyłączyć jej obchodzenie przez administratora.
+- **Kolejność włączania:** najpierw jednorazowy push i zielony pierwszy przebieg (żeby nazwa statusu była znana i CI sprawdzone na czystej maszynie), potem reguła. Włączona przed pierwszym przebiegiem mogłaby zablokować własną naprawę.
+- **Zakres:** bramka na framework sprawdza kod frameworka. Bramka na sklep (testy na kodzie z PR-a aplikacji) to Etap 5.
+- **U mnie dziś:** reguły nie ma. GitHub zwraca „Branch not protected”.
+- **Dowód:** ADR-005, powiązane pytanie „Czym jest quality gate i czym różni się od samego CI?”, słownik: „Quality gate i branch protection”.
+
 ---
 
 ## 10. Słownik pojęć
