@@ -43,7 +43,7 @@ Każdy etap: co zrobiłem → czego się nauczyłem → linki do ADR / praktyk.
 - [x] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
 - [x] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E. **Krok A zrobiony 2026-11-13:** 83 testy sklepu dla zachowań, które sklep ma poprawnie. **Krok B** (kolejne testy API) wydzielony poza etap: czeka na zmianę w sklepie i wróci jako osobna praca
 - [x] **Etap 4 — Równoległość (~1 dzień), 2026-11-16:** pytest-xdist, `-n 4` domyślnie (ADR-015). Własne dane testu i sprzątanie po ID zrobione już w Etapie 3 (ADR-012)
-- [ ] **Etap 5 — CI (1–2 dni):** bramka na PR sklepu (główny trigger), push/PR w repo testów, nightly regression, smoke po deployu, raporty i trace jako artefakty — patrz ADR-005
+- [ ] **Etap 5 — CI (1–2 dni): 5A zrobione 2026-11-17 (bramka na PR sklepu, informacyjna na darmowym planie, ADR-016); zostaje 5B.** Bramka na PR sklepu (główny trigger), push/PR w repo testów, nightly regression, smoke po deployu, raporty i trace jako artefakty — patrz ADR-005
 - [ ] **Etap 6 — AWS (3–5 dni, osobno):** budżet i alerty, ECR (OIDC), RDS, App Runner + VPC connector
 - [ ] **Etap 7 — Dokumentacja (0,5–1 dnia):** README w obu repo, diagram, jak dodać schemat i test
 - [ ] **Etap 8 — (opcjonalny) Wydzielenie backendu:** osobne repo, OpenAPI, ewentualnie Pact
@@ -204,6 +204,25 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 **Projekt:** [`docs/superpowers/specs/2026-11-16-etap-4-rownoleglosc-design.md`](docs/superpowers/specs/2026-11-16-etap-4-rownoleglosc-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-16-etap-4-rownoleglosc.md`](docs/superpowers/plans/2026-11-16-etap-4-rownoleglosc.md) · **ADR:** 015
 
+### Etap 5A — 2026-11-17 → 2026-11-17
+
+**Co powstało**
+- Workflow `tests` w repo **sklepu** (`.github/workflows/tests.yml`): na każdym PR do `main` buduje sklep z kodu PR-a w Dockerze, pobiera publiczne repo testów (gałąź o tej samej nazwie albo `main`), uruchamia cały zestaw (150 testów, 4 procesy) i zgłasza status `tests`. Artefakty: ślady Playwrighta i logi kontenerów przy porażce.
+- Zasady pracy przez pull requesty dla agenta sklepu w jego `AGENTS.md`.
+
+**Wyniki**
+- Przebieg na PR-ze trwa ok. 4 minuty: start sklepu 191 s (budowa obrazu, seed i healthcheck razem; osobno nie mierzone), instalacja przeglądarki 23 s, same testy 10 s. Dominuje start sklepu, więc to on jest pierwszym kandydatem do optymalizacji (cache, gotowy obraz); najpierw warto zmierzyć, ile z tego to sama budowa.
+- **Kontrola czerwieni:** tymczasowy PR z celowo zmienionym zaokrąglaniem ceny (`Math.round` → `Math.floor`) dał czerwony status: 1 test nie przeszedł (`test_promo_price_rounds_half_up`, `assert 22 == 23`), 149 przeszło. PR zamknięty bez scalania.
+- Symulacja CI lokalnie na czystym klonie repo testów, bez `.env`: pierwszy przebieg miał 1 porażkę (E2E `test_guest_buys_product`, szuflada koszyka niewidoczna w 5 s), 149 passed, a cały przebieg trwał 60 s zamiast ok. 15 s, bo maszyna była obciążona tuż po budowie obrazu. Porażki nie udało się odtworzyć: test sam trwał potem 0,8 s, trzy kolejne pełne przebiegi dały 150 passed w ok. 7 s, a hipotezę o klikaniu przed hydracją Reacta odrzucił pomiar (przy 40-krotnie spowolnionym procesorze stary kod też przechodzi z dłuższym limitem). Poprawki w page objectach nie wprowadziłem, żeby nie zgadywać; workflow zachowuje ślady Playwrighta na wypadek, gdyby to wróciło.
+- **Ograniczenie planu:** reguła ochrony `main` jest zapisana, ale GitHub jej **nie egzekwuje** w prywatnym repo na darmowym planie (API: „Upgrade to GitHub Pro or make this repository public”). Bramka jest więc informacyjna: czerwony status widać przy PR-ze, ale Merge nie jest blokowany. (Wniosek z API: `protected: false`. Próbnego pushu na `main` nie robiłem, bo deployuje na Vercel.) Decyzja właściciela: zostajemy przy tym, a egzekwowanie dodajemy przez płatny plan albo bramkę na wdrożeniu (5B).
+
+**Czego się nauczyłem**
+- Zielony przebieg niczego nie dowodzi. Dopiero celowo zepsuta zmiana pokazała, że bramka umie być czerwona i że komunikat wskazuje regułę.
+- Bramka musi być odporna na chwilowe awarie niezwiązane ze zmianą (sieć przy `npm ci`), inaczej uczy ludzi ignorować czerwony status.
+- Przed zbudowaniem bramki sprawdzić, czy plan GitHuba pozwala ją egzekwować. Ustawienie reguły bez egzekwowania wygląda jak ochrona, a nią nie jest.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-17-etap-5a-bramka-sklepu-design.md`](docs/superpowers/specs/2026-11-17-etap-5a-bramka-sklepu-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-17-etap-5a-bramka-sklepu.md`](docs/superpowers/plans/2026-11-17-etap-5a-bramka-sklepu.md) · **ADR:** 016
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -285,17 +304,17 @@ zdarzenie (PR sklepu / push testów)
   → status ✅/❌ przy PR/commicie + artefakty + logi
 ```
 
-- **Wynik:** status przy PR (z branch protection czerwony blokuje merge), artefakty w zakładce Actions (raport HTML, trace Playwrighta → `playwright show-trace`, wideo), logi kroków (warto dodać `docker compose logs` przy porażce).
+- **Wynik:** status przy PR (z egzekwowaną branch protection czerwony blokuje merge; w prywatnym repo na darmowym planie jest tylko informacją, ADR-016), artefakty w zakładce Actions (raport HTML, trace Playwrighta → `playwright show-trace`, wideo), logi kroków (warto dodać `docker compose logs` przy porażce).
 - **Wyzwalacze:** ADR-005.
 - **Dlaczego Docker także przy zmianie w repo testów:** testy to też kod. Na znanej wersji sklepu z czystym seedem zmienia się tylko jedna rzecz — porażka wskazuje na zmianę w testach. Na stagingu porażka byłaby niejednoznaczna (zmienione dane? nowy deploy? staging leży?), a testy DB w ogóle by nie działały.
 
 ### CI — konfiguracja w GitHubie (plan na Etap 5)
 
-1. Repo testów na GitHubie (`ironz1/jersa_test_framework`, prywatne).
-2. Token z prawem odczytu repo testów (fine-grained PAT) → sekret w repo sklepu, np. `TESTS_REPO_TOKEN`.
-3. Workflow w repo **sklepu** `.github/workflows/tests.yml` — **to on jest zapalnikiem** (`on: pull_request: branches: [main]`); docker-compose to tylko krok w środku: checkout sklepu (PR) → checkout testów (token) → `docker compose up --build --wait` (`STOREFRONT_PATH` = sklep z PR-a) → pip + `playwright install` → pytest → upload raportu (`if: always()`) → `down -v`.
-4. Branch protection na `main` sklepu: wymagany zielony status `tests` → CI staje się bramką.
-5. Praca w sklepie przez PR-y (push na `main` omija bramkę).
+1. Repo testów na GitHubie (`ironz1/jersa_test_framework`, **publiczne**).
+2. ~~Token do odczytu repo testów~~ **niepotrzebny w 5A**: repo testów jest publiczne, więc `actions/checkout` pobiera je bez tokena (ADR-016). Token (PAT do prywatnego sklepu, jako sekret repo testów) będzie potrzebny dopiero w 5B, gdy job w repo testów zacznie budować sklep.
+3. Workflow w repo **sklepu** `.github/workflows/tests.yml` — **to on jest zapalnikiem** (`on: pull_request: branches: [main]`); docker-compose to tylko krok w środku: checkout sklepu (PR) → wybór gałęzi testów (ta sama nazwa albo `main`) → checkout testów (bez tokena, repo publiczne) → `uv sync` + `playwright install` → `docker compose up --build --wait` (`STOREFRONT_PATH` = sklep z PR-a, do 3 prób) → pytest → upload śladów (`if: always()`) i logów kontenerów (przy porażce) → `down -v`.
+4. Branch protection na `main` sklepu: wymagany zielony status `tests` → CI staje się bramką. **Uwaga:** w prywatnym repo na darmowym planie reguła jest zapisana, ale nieegzekwowana (patrz ADR-016).
+5. Praca w sklepie przez PR-y (push na `main` omija bramkę). Zasady dla agenta: `AGENTS.md` w repo sklepu.
 6. W repo testów osobny workflow: `push`/`pull_request` (Docker, `main` sklepu) + `schedule` (nightly na STG).
 
 ### Mapowanie środowisk (klasyczne DEV/INT/STG/PROD → jersa)
@@ -340,8 +359,9 @@ core/           → konfiguracja, logowanie, klienci, utils
 | Dostęp testów do bazy STG (Neon) z CI | Etap 3/5 | Fixtures tworzące dane przez SQL na STG wymagają sekretu `DATABASE_URL` Neona w GitHub Actions; ADR-005 zakładał nightly bez testów DB |
 | Kolejne wpisy bloga w seedzie | Gdy będą gotowe treści | **Częściowo rozstrzygnięte (2026-11-05):** Grok dodał wpis `kombinezon-zamiast-sukienki` (zdjęcie z `public/`, tylko dopisywanie). Wpis usunięty w adminie wróci po następnym deployu. Do ustalenia, czy kolejne wpisy też trafiają do seedu |
 | Przeniesienie treści bloga na PROD | Przed uruchomieniem właściwego sklepu | Wpisy z admina na STG nie przejdą same: plik w repo albo migracja z bazy |
-| Praca w sklepie przez PR-y zamiast pushy na `main` | Przed Etapem 5 | Bramka na PR (ADR-005) działa tylko, gdy zmiany idą przez PR; dziś push na `main` deployuje od razu |
-| Mechanizm bramki na PR sklepu: workflow sklepu sam pobiera repo testów (checkout z tokenem) czy `repository_dispatch` / reusable workflow | Etap 5 | Status musi wrócić do PR-a sklepu; `repository_dispatch` nie raportuje wyniku do PR-a automatycznie, checkout testów w workflow sklepu — tak |
+| Praca w sklepie przez PR-y zamiast pushy na `main` | Przed Etapem 5 | **Rozstrzygnięte 2026-11-17:** przez PR-y, zasady w `AGENTS.md` sklepu; techniczne wymuszenie wymaga płatnego planu (patrz wiersz niżej). Bramka na PR (ADR-005) działa tylko, gdy zmiany idą przez PR; push na `main` deployuje od razu |
+| Egzekwowanie bramki na `main` sklepu | 5B | Na darmowym planie reguła ochrony w prywatnym repo nie działa (ADR-016). Opcje: GitHub Pro albo bramka na wdrożeniu (auto-deploy z `main` wyłączony, workflow wdraża dopiero po zielonych testach) |
+| Mechanizm bramki na PR sklepu: workflow sklepu sam pobiera repo testów (checkout z tokenem) czy `repository_dispatch` / reusable workflow | Etap 5 | **Rozstrzygnięte 2026-11-17: ADR-016** (checkout w workflow sklepu, bez tokena, bo repo testów jest publiczne). Status musi wrócić do PR-a sklepu; `repository_dispatch` nie raportuje wyniku do PR-a automatycznie |
 | Budowanie obrazu sklepu przy każdym przebiegu czy gotowy obraz z GHCR | Etap 5 (optymalizacja) lub Etap 6 | Gotowy obraz skraca start z minut do sekund; ten sam mechanizm posłuży do ECR w AWS |
 | Narzędzie raportów: pytest-html czy Allure | Etap 5 | Raporty trafiają do CI dopiero w Etapie 5; historia przebiegów w Allure ma sens przy regularnych uruchomieniach. Porównanie: sekcja 9 |
 | mypy i pre-commit | Po Etapie 3 | Przy kilku plikach szkieletu koszt konfiguracji przewyższa zysk; po Etapie 3 będzie dość kodu, żeby ocenić |
@@ -511,6 +531,18 @@ core/           → konfiguracja, logowanie, klienci, utils
 - **Konsekwencje:** zielone 3 przebiegi z rzędu bez kolizji i bez śladów w bazie. Czas całości bez zmian (ok. 15 s), więc zysk to dowód niezależności, a nie szybkość. Czy przy większym zestawie się opłaci, trzeba będzie zmierzyć. Koszt: do podglądu przeglądarki i debugowania trzeba pamiętać o `-n 0`; `--pdb` zgłasza to błędem, a `-s` po cichu nie wypisuje nic. `pytest-xdist` jest w grupie `dev`, więc `uv sync --no-dev` i `pytest` zakończą się błędem „unrecognized arguments: -n” (CI robi `uv sync --locked` z grupą `dev`). Test `test_pytest_config.py` pilnuje konfiguracji. Marker `serial` i `loadfile` nie były potrzebne; wprowadzamy je dopiero z uzasadnieniem.
 - **Na rozmowie:** Testy uruchamiam domyślnie na czterech procesach, bo to dobry sposób, żeby wykryć testy zależne od siebie, a każdy przebieg sprawdza to samo bez dodatkowej flagi. U mnie nic się nie wywróciło, bo każdy test ma własne dane, ale mierzyłem też czas i przy tak małym zestawie przyspieszenia nie ma. Do debugowania wyłączam równoległość jednym przełącznikiem.
 
+### ADR-016: Bramka testów na PR sklepu: workflow w repo sklepu, publiczne testy bez tokena, bramka informacyjna na darmowym planie
+- **Data:** 2026-11-17
+- **Kontekst:** zmiany w sklepie trafiały na `main` i od razu na Vercel, a testy uruchamiało się ręcznie. Chcemy wykryć błąd przed scaleniem. Sklep jest prywatny, repo testów publiczne.
+- **Rozważane opcje:**
+  - A — workflow w repo sklepu pobiera repo testów (checkout) i raportuje status do PR-a sklepu
+  - B — `repository_dispatch` z repo sklepu do repo testów: wynik nie wraca do PR-a automatycznie
+  - Gałąź testów: zawsze `main` (A1) albo gałąź o tej samej nazwie co gałąź PR-a, a gdy jej nie ma `main` (A2), albo ręczny parametr (A3)
+  - Egzekwowanie: reguła ochrony na GitHubie (wymaga płatnego planu w prywatnym repo), bramka na wdrożeniu (5B) albo upublicznienie repo sklepu (odrzucone: prywatny kod i materiały sklepu)
+- **Decyzja:** A z A2. Workflow `tests` w repo sklepu, checkout publicznego repo testów **bez tokena**, wybór gałęzi przez `git ls-remote` (nazwa gałęzi przekazywana tylko przez zmienną środowiskową, nigdy do skryptu przez `${{ }}`), obraz sklepu budowany przy każdym przebiegu bez cache (191 s), do 3 prób budowy przy chwilowym błędzie sieci. **Bramka jest informacyjna** (decyzja właściciela): reguła ochrony jest zapisana, ale nieegzekwowana na darmowym planie; zostają zasady w `AGENTS.md` i scalanie przez człowieka.
+- **Konsekwencje:** błąd w sklepie widać przy PR-ze po ok. 4 minutach, razem z logami i śladami. Zmiana zachowania sklepu i testów idzie parą gałęzi o tej samej nazwie; gałąź testów musi istnieć przed startem przebiegu, a oba PR-y scala się razem (sklep, zaraz po nim testy), bo inaczej kolejne PR-y sklepu są czerwone. Koszt: czerwony status nie blokuje Merge ani pushu na `main`, więc ochrona zależy od dyscypliny. Wrócić do tematu w 5B (bramka na wdrożeniu) albo po zakupie planu Pro. Budowa obrazu to 80% czasu przebiegu, więc w kolejnym kroku warto użyć cache albo gotowego obrazu.
+- **Na rozmowie:** Każdy pull request w sklepie buduje go w Dockerze i uruchamia moje testy, a wynik widać przy PR-ze. Sprawdziłem też, że bramka umie być czerwona, celowo psując cenę. Na darmowym planie GitHuba ta bramka tylko ostrzega, a nie blokuje, więc egzekwowanie dołożę na wdrożeniu albo przez płatny plan.
+
 <!--
 ### ADR-001: <tytuł decyzji>
 - **Data:**
@@ -597,6 +629,27 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Jak zapobiec:** przed buildem `docker system df` i wolne miejsce na dysku (build Next.js potrzebuje ~8–10 GB); okresowo `docker builder prune`; kompaktowanie vhdx po dużych porządkach; ewentualnie przeniesienie dysku Dockera na inny dysk (Settings → Resources → Disk image location). Diagnoza zaczyna się od zasobów (dysk, RAM), nie od restartu.
 - **Przy okazji — lekcja o `.dockerignore`:** stary obraz frameworka z poprzedniej pracy miał warstwę `COPY . /test_root` = 606 MB, bo bez `.dockerignore` trafiło do niego całe repo: `.git`, `.idea`, logi, pobrane pliki i plik z danymi logowania. Obraz można skopiować, wypchnąć do rejestru i rozpakować — wszystko, co w nim jest, trzeba traktować jak opublikowane. Dlatego w Dockerfile sklepu jest `.dockerignore` (`.env*`, `.git`, `node_modules`, `*.db`).
 - **Na rozmowie:** historia „opowiedz o trudnym problemie”: objaw wyglądał na awarię Dockera, a przyczyną były zasoby hosta; najpierw zmierzyłem (dysk, `docker system df`, rozmiar vhdx), dopiero potem sprzątałem — i tylko za zgodą właściciela danych.
+
+### Push odrzucony: „email privacy restrictions” (Etap 5A, 2026-11-17)
+- **Objaw:** `git push` do repo sklepu kończy się `push declined due to email privacy restrictions`, a `gh pr create` zgłasza „No commits between main and branch”.
+- **Przyczyna:** repo sklepu miało w konfiguracji prywatny adres e-mail autora, a konto ma włączone blokowanie pushy ujawniających adres. Repo testów używało adresu `noreply` od początku, więc tam problemu nie było.
+- **Rozwiązanie:** przepisanie autora jednego, jeszcze niewypchniętego commita na adres `noreply` (`git -c user.email=... commit --amend --reset-author`), bez zmiany konfiguracji repo.
+- **Jak zapobiec:** w każdym repo ustawić `user.email` na adres `<id>+<login>@users.noreply.github.com` (w repo sklepu zrobi to właściciel, bo to jego konfiguracja).
+- **Na rozmowie:** GitHub odrzucił push, bo w commicie był mój prywatny adres. Naprawiłem tylko ten commit adresem `noreply` i dodałem w notatkach, żeby ustawić go w każdym repo.
+
+### Bramka czerwona przez chwilowy błąd sieci (Etap 5A, 2026-11-17)
+- **Objaw:** drugi przebieg tego samego PR-a padł w budowie obrazu: `npm ci ... ECONNRESET`, mimo że pierwszy był zielony.
+- **Przyczyna:** chwilowy błąd połączenia z rejestrem npm na runnerze, niezwiązany ze zmianą.
+- **Rozwiązanie:** pętla do 3 prób wokół `docker compose up --build --wait` (z `down -v` między próbami). Przetestowana na atrapie: sukces od razu, sukces po ponowieniu i trwała porażka (kod 1).
+- **Jak zapobiec:** kroki zależne od sieci (pobieranie paczek, obrazów) powtarzać. Koszt: prawdziwy błąd budowy też jest powtarzany trzy razy, więc czerwony pojawia się później.
+- **Na rozmowie:** Bramka, która czasem jest czerwona bez powodu, uczy ludzi ją ignorować. Przy błędzie sieci w budowie ponawiam krok do trzech razy, a testów nie ponawiam, żeby nie ukrywać prawdziwych porażek.
+
+### Reguła ochrony zapisana, ale nieegzekwowana (Etap 5A, 2026-11-17)
+- **Objaw:** po zapisaniu reguły dla `main` sklepu GitHub pokazał, że nie będzie egzekwowana w tym prywatnym repo. API: `protected: false`, endpointy reguł zwracają 403 „Upgrade to GitHub Pro or make this repository public”.
+- **Przyczyna:** ochrona gałęzi w prywatnych repo wymaga płatnego planu. Założyłem, że wystarczy plan darmowy, bo tak działa w publicznym repo testów, i tego nie sprawdziłem przed budową.
+- **Rozwiązanie:** decyzja właściciela: bramka informacyjna (czerwony status widać, ale Merge nie jest blokowany), zasady w `AGENTS.md`, egzekwowanie w 5B (bramka na wdrożeniu) albo po zakupie planu Pro. Nie sprawdzałem tego próbnym pushem na `main`, bo push deployuje na Vercel.
+- **Jak zapobiec:** przed zaplanowaniem bramki sprawdzić, co plan konta pozwala egzekwować (`gh api repos/<repo>/branches/main/protection`).
+- **Na rozmowie:** Okazało się, że na darmowym planie GitHub nie egzekwuje reguł ochrony w prywatnym repo. Zamiast to ukrywać, opisałem to jako ograniczenie bramki i zaplanowałem egzekwowanie na wdrożeniu.
 
 ### Testy równolegle nie są szybsze (Etap 4, 2026-11-16)
 - **Objaw:** `-n 4` daje ten sam czas co jeden proces (ok. 15 s), E2E nawet wolniej (6,3 → 8,0 s), a zestaw frameworka ok. 8–9 razy wolniej (0,5 → 4,8 s).
@@ -702,6 +755,9 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 32. **Uruchom cały zestaw kilka razy z rzędu i sprawdź ślady w bazie** — powtarzalność i sprzątanie potwierdza się pomiarem, nie założeniem.
 33. **Włącz równoległość (`-n 4`) i sprawdź, czy testy są niezależne** — pytest-xdist w `addopts`, test pilnujący konfiguracji, trzy przebiegi z kontrolą bazy (ADR-015).
 34. **Zmierz czas z równoległością i bez niej, osobno dla każdego poziomu** — krótki zestaw nie przyspiesza, a start procesów może go spowolnić; tam, gdzie tak jest, wyłącz `-n` (`ci.yml`: `-n 0`).
+35. **Postaw bramkę tam, gdzie powstaje zmiana** — workflow w repo sklepu uruchamia testy z osobnego repo na każdym PR-ze; sam plik YAML to zapalnik, a reguła ochrony to osobne ustawienie w GitHubie (ADR-016).
+36. **Zobacz bramkę na czerwono** — celowo zepsuta zmiana w tymczasowym PR-ze, zamkniętym bez scalania, dowodzi, że status umie być czerwony i że komunikat wskazuje regułę.
+37. **Sprawdź, co plan konta pozwala egzekwować, zanim zbudujesz bramkę** — reguła ochrony w prywatnym repo na darmowym planie jest zapisana, ale nieegzekwowana.
 
 ---
 
@@ -710,7 +766,7 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z linkiem do ADR / problemu).
 
 ### Jak zapewniasz powtarzalne środowisko testowe?
-- **Odpowiedź:** konteneryzuję SUT (Docker + docker-compose): sklep i Postgres startują jedną komendą, z czystą bazą i znanym seedem po `down -v`, a w CI na każdy przebieg. Działa lokalnie; ten sam układ jest zaplanowany w CI (Etap 5) i w chmurze (Etap 6). Testy nie zależą od współdzielonego stagingu ani od tego, co ktoś wcześniej kliknął, i idą na tym samym silniku bazy co produkcja (Postgres, nie SQLite).
+- **Odpowiedź:** konteneryzuję SUT (Docker + docker-compose): sklep i Postgres startują jedną komendą, z czystą bazą i znanym seedem po `down -v`, a w CI na każdy przebieg. Działa lokalnie; ten sam układ działa w CI na PR-ach sklepu (Etap 5A) i jest zaplanowany w chmurze (Etap 6). Testy nie zależą od współdzielonego stagingu ani od tego, co ktoś wcześniej kliknął, i idą na tym samym silniku bazy co produkcja (Postgres, nie SQLite).
 - **Czego unikam:** „u mnie działa”, testów na współdzielonym stagingu ze zmiennymi danymi, różnic między bazą testową a produkcyjną.
 - **Dowód:** Etap 1 (Docker), notatki z Etapu 0 (Prisma SQLite ↔ Postgres), sekcja 10 — SUT, seed.
 
@@ -905,6 +961,43 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 ### Czy równoległość zawsze przyspiesza testy?
 - **Odpowiedź:** nie. Każdy proces ma stały koszt startu (import, zebranie testów, w E2E własna przeglądarka), więc dla krótkich testów start przewyższa zysk. U mnie zestaw 150 testów trwał ok. 15 s zarówno na jednym, jak i na czterech procesach, E2E było wolniejsze (6,3 → 8,0 s), a 67 szybkich testów frameworka ok. 8–9 razy wolniejsze (0,5 → 4,8 s), więc w CI idą z `-n 0`. Ograniczeniem bywa też sama aplikacja pod obciążeniem; u mnie tego nie mierzyłem. Dlatego mierzę przed i po.
 - **Dowód:** sekcja 6 („Testy równolegle nie są szybsze”), ADR-015, `ci.yml`.
+
+### Jak zbudowałeś bramkę jakości, gdy sklep i testy są w dwóch repozytoriach?
+- **Odpowiedź:** workflow leży w repo sklepu, bo to tam powstaje zmiana. Na każdy pull request do `main` buduje sklep z kodu PR-a w Dockerze, pobiera repo testów i uruchamia cały zestaw (kontrakt, API, baza, E2E). Wynik wraca do PR-a jako status `tests`. Repo testów jest publiczne, więc checkout nie wymaga tokena. Jeśli zmiana w sklepie świadomie zmienia zachowanie, robię gałąź o tej samej nazwie w repo testów, a workflow ją wybierze; bez niej bierze `main`.
+- **Czego unikam:** `repository_dispatch` (wynik nie wraca do PR-a), ręcznego wskazywania gałęzi testów i ponawiania samych testów (ukrywa prawdziwe porażki).
+- **Dowód:** ADR-016, `tests.yml` w repo sklepu, PR #1 i kontrola czerwieni w PR #2 (zamknięty).
+
+### Skąd wiesz, że bramka naprawdę wykrywa błąd, a nie tylko wygląda na zieloną?
+- **Odpowiedź:** zielony przebieg niczego nie dowodzi, bo workflow z błędem w konfiguracji też byłby zielony. Dlatego robię kontrolę czerwieni: tymczasowy PR z celowo złamaną regułą (zaokrąglanie ceny) i sprawdzam, że status jest czerwony, test wskazuje regułę (`assert 22 == 23`) i są logi do diagnozy. Dla samej blokady Merge to osobne sprawdzenie reguły ochrony gałęzi.
+- **Uczciwie:** w prywatnym repo na darmowym planie GitHub reguł ochrony nie egzekwuje, więc moja bramka na sklepie jest informacyjna. Egzekwowanie dołożę przez płatny plan albo przez bramkę na wdrożeniu.
+- **Dowód:** sekcja 6 („Reguła ochrony zapisana, ale nieegzekwowana”), ADR-016.
+
+### Czym różni się `pull_request` od `pull_request_target` i jak zabezpieczasz workflow przed złośliwą nazwą gałęzi?
+- **Odpowiedź:** `pull_request` uruchamia workflow z kodu PR-a; dla PR-ów z forków dostaje on tylko token do odczytu i bez sekretów, a dla gałęzi z tego samego repo ma dostęp do sekretów, jeśli workflow je wskazuje. `pull_request_target` uruchamia workflow z gałęzi docelowej z sekretami i zapisem, więc nie wolno w nim wykonywać kodu z PR-a. Używam `pull_request`, bez sekretów i z `permissions: contents: read`. Nazwa gałęzi to dane od użytkownika: wstawiona do skryptu przez `${{ github.head_ref }}` mogłaby wykonać polecenie. Przekazuję ją przez zmienną środowiskową i cytuję w skrypcie. `actionlint` wykrywa takie wstawienie, co sprawdziłem na celowo zepsutej kopii.
+- **Dowód:** `tests.yml` (krok „Wybór gałęzi testów”), ADR-016.
+
+### Co robisz, gdy bramka bywa czerwona bez powodu (flaky)?
+- **Odpowiedź:** najpierw rozróżniam awarię infrastruktury od porażki testu. Chwilowy błąd sieci przy budowie obrazu (`npm ci ... ECONNRESET`) ponawiam do trzech razy, bo nie dotyczy zmiany. Samych testów nie ponawiam, bo ukryłbym prawdziwy błąd. Przy porażce testu zostają ślady Playwrighta i logi kontenerów jako artefakty, więc przyczynę ustalam z dowodu, a nie z zgadywania. Nie naprawiam „na zapas”: jednorazowej porażki E2E, której nie dało się odtworzyć, nie poprawiałem, tylko zapisałem i zostawiłem artefakty na następny raz.
+- **Dowód:** sekcja 6 („Bramka czerwona przez chwilowy błąd sieci”) i opis Etapu 5A w sekcji 2 (jednorazowa porażka E2E w symulacji CI).
+
+### Jak zabezpieczasz repozytorium przed agentem AI, który może pushować kod?
+- **Odpowiedź:** agent działa na moim koncie, więc ma moje uprawnienia, a sama prośba w prompcie go nie powstrzyma. Zabezpieczenia mają dwa poziomy. Techniczny: reguła ochrony gałęzi (wymagany pull request, wymagany zielony status, bez obejścia przez administratora), która odrzuca push na `main`. Procesowy: plik z zasadami dla agenta (`AGENTS.md`): praca na gałęzi, nie scalaj przy czerwonym statusie, nie obchodź reguł, scala człowiek.
+- **Uczciwie:** w moim prywatnym repo na darmowym planie GitHub reguły nie egzekwuje, więc zostaje poziom procesowy i bramka informacyjna. Dlatego zasady musiały być prawdziwe: recenzja wychwyciła u mnie zdanie „main jest chroniony”, które wprowadzałoby agenta w błąd. Egzekwowanie dołożę na wdrożeniu albo przez płatny plan.
+- **Dowód:** `AGENTS.md` repo sklepu, ADR-016, sekcja 6 („Reguła ochrony zapisana, ale nieegzekwowana”).
+
+### Jak diagnozujesz test, który padł w CI, a lokalnie przechodzi?
+- **Odpowiedź:** po kolei. (1) Który krok padł: budowa sklepu albo instalacja to problem infrastruktury, dopiero krok „Testy” mówi coś o zachowaniu aplikacji. (2) Artefakty: ślady Playwrighta (`--tracing retain-on-failure`, potem `playwright show-trace`) i logi kontenerów. (3) Odtworzenie w czystym środowisku bez moich ustawień: sklonowałem repo testów bez `.env` i postawiłem sklep od zera, tak jak robi to runner. (4) Hipotezę sprawdzam pomiarem, zanim cokolwiek poprawię.
+- **U mnie:** w symulacji CI jeden test E2E padł raz (szuflada koszyka niewidoczna). Podejrzewałem klik przed hydracją Reacta, spowolniłem procesor przeglądarki 40-krotnie i stary kod nadal przechodził, więc hipotezę odrzuciłem i niczego nie „naprawiałem na zapas”. Zostawiłem ślady w artefaktach na wypadek powrotu.
+- **Dowód:** sekcja 2 („Etap 5A”, wyniki), `tests.yml`.
+
+### Z czego składa się czas bramki w CI i jak go skrócić?
+- **Odpowiedź:** najpierw rozbijam czas na kroki, bo zgaduję zwykle źle. U mnie przebieg trwa ok. 4 minuty: start sklepu 191 s (budowa obrazu, seed i healthcheck razem), instalacja przeglądarki 23 s, same testy 10 s. Optymalizować trzeba start sklepu, a nie testy. Opcje: cache warstw Dockera między przebiegami, gotowy obraz w rejestrze (GHCR) budowany raz na zmianę, i dopiero wtedy ewentualnie mniej testów na PR-ze. Najpierw jednak zmierzyć, ile z 191 s to sama budowa.
+- **Uwaga:** równoległość testów (`-n 4`) nie pomaga, gdy testy to 5% czasu.
+- **Dowód:** ADR-016 (obraz bez cache jako świadoma pierwsza wersja), sekcja 6 („Testy równolegle nie są szybsze”).
+
+### Do czego służą `concurrency` i `cancel-in-progress` w workflow i jak wpływają na sprzątanie?
+- **Odpowiedź:** `concurrency` z grupą po nazwie gałęzi sprawia, że nowy push do tego samego PR-a anuluje trwający przebieg (`cancel-in-progress: true`). Oszczędza to minuty (w prywatnym repo są limitowane) i pilnuje, żeby status przy PR-ze dotyczył ostatniego commita. Anulowanie przerywa zadanie w środku, więc kroki sprzątania i zbierania logów muszą mieć warunek, który działa po anulowaniu: `if: always()` albo `failure() || cancelled()`. Samo `failure()` po anulowaniu się nie uruchomi.
+- **Dowód:** `tests.yml` w repo sklepu (grupa `tests-${{ github.head_ref }}`, kroki „Sprzątanie” i logi kontenerów).
 
 ---
 
