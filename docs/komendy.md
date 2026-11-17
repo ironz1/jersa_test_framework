@@ -72,7 +72,9 @@ Domyślnie testy idą na 4 procesach, więc `--headed` albo `HEADED=true` otworz
 | `uv run ruff format` | formatuje kod |
 | `uv run ruff format --check` | sprawdza formatowanie bez zmian w plikach (tak robi CI) |
 
-CI uruchamia: `ruff check`, `ruff format --check` i `pytest tests/framework -n 0` (67 szybkich testów trwa w jednym procesie 0,5 s, a start 4 procesów dodaje ok. 4 s).
+Bramka testów sklepu żyje w repo sklepu (`.github/workflows/tests.yml`): na PR-ze buduje sklep i uruchamia cały zestaw na 4 procesach. Zmianę zachowania sklepu razem z testami robi się parą gałęzi o **tej samej nazwie** w obu repo. Gałąź testów musi istnieć w momencie startu przebiegu (po jej późniejszym wypchnięciu uruchom przebieg ponownie), a obie gałęzie scala się razem: najpierw PR sklepu, zaraz po nim PR testów. Dopóki testy ze `main` nie nadążą za sklepem, każdy następny PR sklepu będzie czerwony. Gałąź testów tworzy właściciel.
+
+CI repo testów uruchamia: `ruff check`, `ruff format --check` i `pytest tests/framework -n 0` (67 szybkich testów trwa w jednym procesie 0,5 s, a start 4 procesów dodaje ok. 4 s).
 
 ## 7. Macierz śledzenia wymagań
 
