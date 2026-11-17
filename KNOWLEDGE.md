@@ -980,6 +980,25 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Odpowiedź:** najpierw rozróżniam awarię infrastruktury od porażki testu. Chwilowy błąd sieci przy budowie obrazu (`npm ci ... ECONNRESET`) ponawiam do trzech razy, bo nie dotyczy zmiany. Samych testów nie ponawiam, bo ukryłbym prawdziwy błąd. Przy porażce testu zostają ślady Playwrighta i logi kontenerów jako artefakty, więc przyczynę ustalam z dowodu, a nie z zgadywania. Nie naprawiam „na zapas”: jednorazowej porażki E2E, której nie dało się odtworzyć, nie poprawiałem, tylko zapisałem i zostawiłem artefakty na następny raz.
 - **Dowód:** sekcja 6 („Bramka czerwona przez chwilowy błąd sieci”) i opis Etapu 5A w sekcji 2 (jednorazowa porażka E2E w symulacji CI).
 
+### Jak zabezpieczasz repozytorium przed agentem AI, który może pushować kod?
+- **Odpowiedź:** agent działa na moim koncie, więc ma moje uprawnienia, a sama prośba w prompcie go nie powstrzyma. Zabezpieczenia mają dwa poziomy. Techniczny: reguła ochrony gałęzi (wymagany pull request, wymagany zielony status, bez obejścia przez administratora), która odrzuca push na `main`. Procesowy: plik z zasadami dla agenta (`AGENTS.md`): praca na gałęzi, nie scalaj przy czerwonym statusie, nie obchodź reguł, scala człowiek.
+- **Uczciwie:** w moim prywatnym repo na darmowym planie GitHub reguły nie egzekwuje, więc zostaje poziom procesowy i bramka informacyjna. Dlatego zasady musiały być prawdziwe: recenzja wychwyciła u mnie zdanie „main jest chroniony”, które wprowadzałoby agenta w błąd. Egzekwowanie dołożę na wdrożeniu albo przez płatny plan.
+- **Dowód:** `AGENTS.md` repo sklepu, ADR-016, sekcja 6 („Reguła ochrony zapisana, ale nieegzekwowana”).
+
+### Jak diagnozujesz test, który padł w CI, a lokalnie przechodzi?
+- **Odpowiedź:** po kolei. (1) Który krok padł: budowa sklepu albo instalacja to problem infrastruktury, dopiero krok „Testy” mówi coś o zachowaniu aplikacji. (2) Artefakty: ślady Playwrighta (`--tracing retain-on-failure`, potem `playwright show-trace`) i logi kontenerów. (3) Odtworzenie w czystym środowisku bez moich ustawień: sklonowałem repo testów bez `.env` i postawiłem sklep od zera, tak jak robi to runner. (4) Hipotezę sprawdzam pomiarem, zanim cokolwiek poprawię.
+- **U mnie:** w symulacji CI jeden test E2E padł raz (szuflada koszyka niewidoczna). Podejrzewałem klik przed hydracją Reacta, spowolniłem procesor przeglądarki 40-krotnie i stary kod nadal przechodził, więc hipotezę odrzuciłem i niczego nie „naprawiałem na zapas”. Zostawiłem ślady w artefaktach na wypadek powrotu.
+- **Dowód:** sekcja 2 („Etap 5A”, wyniki), `tests.yml`.
+
+### Z czego składa się czas bramki w CI i jak go skrócić?
+- **Odpowiedź:** najpierw rozbijam czas na kroki, bo zgaduję zwykle źle. U mnie przebieg trwa ok. 4 minuty: start sklepu 191 s (budowa obrazu, seed i healthcheck razem), instalacja przeglądarki 23 s, same testy 10 s. Optymalizować trzeba start sklepu, a nie testy. Opcje: cache warstw Dockera między przebiegami, gotowy obraz w rejestrze (GHCR) budowany raz na zmianę, i dopiero wtedy ewentualnie mniej testów na PR-ze. Najpierw jednak zmierzyć, ile z 191 s to sama budowa.
+- **Uwaga:** równoległość testów (`-n 4`) nie pomaga, gdy testy to 5% czasu.
+- **Dowód:** ADR-016 (obraz bez cache jako świadoma pierwsza wersja), sekcja 6 („Testy równolegle nie są szybsze”).
+
+### Do czego służą `concurrency` i `cancel-in-progress` w workflow i jak wpływają na sprzątanie?
+- **Odpowiedź:** `concurrency` z grupą po nazwie gałęzi sprawia, że nowy push do tego samego PR-a anuluje trwający przebieg (`cancel-in-progress: true`). Oszczędza to minuty (w prywatnym repo są limitowane) i pilnuje, żeby status przy PR-ze dotyczył ostatniego commita. Anulowanie przerywa zadanie w środku, więc kroki sprzątania i zbierania logów muszą mieć warunek, który działa po anulowaniu: `if: always()` albo `failure() || cancelled()`. Samo `failure()` po anulowaniu się nie uruchomi.
+- **Dowód:** `tests.yml` w repo sklepu (grupa `tests-${{ github.head_ref }}`, kroki „Sprzątanie” i logi kontenerów).
+
 ---
 
 ## 10. Słownik pojęć
