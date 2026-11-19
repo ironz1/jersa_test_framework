@@ -223,6 +223,24 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 **Projekt:** [`docs/superpowers/specs/2026-11-17-etap-5a-bramka-sklepu-design.md`](docs/superpowers/specs/2026-11-17-etap-5a-bramka-sklepu-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-17-etap-5a-bramka-sklepu.md`](docs/superpowers/plans/2026-11-17-etap-5a-bramka-sklepu.md) · **ADR:** 016
 
+### Kasa, krok 1 — 2026-11-19 → 2026-11-19
+
+**Co powstało**
+- Gałąź `feat/payu` w repo testów, para dla gałęzi kasy w sklepie (ADR-016). Na sklepie z kasą stary zestaw dawał 144 passed i 6 failed; każda z 6 porażek wynikała z zamierzonej zmiany w sklepie, opisanej w specu kasy.
+- Kontrakt koszyka z polami `discountCode` i `discountAmount`; nowy przypadek A-CART-14 (koszyk nie przyjmuje ilości ponad stan); testy „Brak stanu” przy zamówieniu przepisane na wyścig dwóch klientów o ostatnią sztukę (A-ORD-05, D-ORD-05, D-ORD-06); E-01 przez nową kasę z Kurierem DPD, suma = cena + 15 zł. Wymagania R25 i R26 w macierzy.
+
+**Wyniki**
+- Dwa pełne przebiegi na sklepie z `feat/payu` (`eba7b3d`): 154 passed (87 testów sklepu, 67 frameworka), ok. 8 s na 4 procesach.
+- Asercje nowych i przepisanych testów sprawdzone mutacją, bo zachowanie sklepu już istniało: zmieniony komunikat stanu i dopłata 0 zł dały czerwone testy z czytelną różnicą.
+- Przed testami sklep z kasą nie wstawał na pustej bazie (sekcja 6); poprawka po stronie agenta sklepu.
+- **Kolejność scalania:** najpierw PR sklepu `feat/payu`, zaraz po nim PR testów `feat/payu`. Testy z kasą na `main` repo testów przed kasą na `main` sklepu dałyby czerwień każdemu innemu PR-owi sklepu (te same 6 testów, tylko odwrotnie), a sklep z kasą bez testów z kasą – tak samo. Gałęzi testów nie usuwać przed scaleniem PR-a sklepu.
+
+**Czego się nauczyłem**
+- Gdy test pada po zmianie w aplikacji, najpierw spec: jeśli zmiana jest zamierzona, test dopasowuję tak, żeby sprawdzał to samo wymaganie, a nie usuwam sprawdzenia. „Brak stanu” przy zamówieniu został, tylko z realnym scenariuszem.
+- Testu zachowania, które już istnieje, nie zobaczę czerwonego przez brak kodu; zamiast tego psuję na chwilę oczekiwaną wartość.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-19-kasa-krok-1-design.md`](docs/superpowers/specs/2026-11-19-kasa-krok-1-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-19-kasa-krok-1.md`](docs/superpowers/plans/2026-11-19-kasa-krok-1.md)
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -630,6 +648,13 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Przy okazji — lekcja o `.dockerignore`:** stary obraz frameworka z poprzedniej pracy miał warstwę `COPY . /test_root` = 606 MB, bo bez `.dockerignore` trafiło do niego całe repo: `.git`, `.idea`, logi, pobrane pliki i plik z danymi logowania. Obraz można skopiować, wypchnąć do rejestru i rozpakować — wszystko, co w nim jest, trzeba traktować jak opublikowane. Dlatego w Dockerfile sklepu jest `.dockerignore` (`.env*`, `.git`, `node_modules`, `*.db`).
 - **Na rozmowie:** historia „opowiedz o trudnym problemie”: objaw wyglądał na awarię Dockera, a przyczyną były zasoby hosta; najpierw zmierzyłem (dysk, `docker system df`, rozmiar vhdx), dopiero potem sprzątałem — i tylko za zgodą właściciela danych.
 
+### Sklep z kasą nie startował na pustej bazie (Kasa, 2026-11-19)
+- **Objaw:** `docker compose up --build` dla gałęzi kasy sklepu padał dwa razy: build na kontroli typów (`src/lib/mail.ts`), a po obejściu tego przygotowanie bazy (`P1014: The underlying table for model CartRow does not exist`).
+- **Przyczyna:** skrypt przygotowania bazy dopisywał kolumny kasy (`ALTER TABLE`) przed utworzeniem schematu. Na bazie podglądu, gdzie tabele już były, to działało; na pustej bazie testów i bramki tabel jeszcze nie ma. Błąd typów odtwarzał się też prostym `npx tsc --noEmit`.
+- **Rozwiązanie:** opis obu błędów z odtworzeniem i oczekiwanym wynikiem przekazany agentowi sklepu; poprawka w sklepie (`eba7b3d`). Sprawdziłem oba przypadki: pusta baza i ponowne przygotowanie istniejącej. Sklepu sam nie poprawiałem.
+- **Jak zapobiec:** zmiany schematu bazy sprawdzać na pustej bazie, a nie tylko na takiej, gdzie dane już są. To robi bramka na każdym PR-ze.
+- **Na rozmowie:** Podgląd nowej funkcji działał, bo jego baza miała już tabele, a na pustej bazie testów sklep się nie uruchamiał. Opisałem twórcy dwa błędy z krokami odtworzenia i sprawdziłem poprawkę w obu przypadkach, zanim zacząłem pisać testy.
+
 ### Push odrzucony: „email privacy restrictions” (Etap 5A, 2026-11-17)
 - **Objaw:** `git push` do repo sklepu kończy się `push declined due to email privacy restrictions`, a `gh pr create` zgłasza „No commits between main and branch”.
 - **Przyczyna:** repo sklepu miało w konfiguracji prywatny adres e-mail autora, a konto ma włączone blokowanie pushy ujawniających adres. Repo testów używało adresu `noreply` od początku, więc tam problemu nie było.
@@ -758,6 +783,8 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 35. **Postaw bramkę tam, gdzie powstaje zmiana** — workflow w repo sklepu uruchamia testy z osobnego repo na każdym PR-ze; sam plik YAML to zapalnik, a reguła ochrony to osobne ustawienie w GitHubie (ADR-016).
 36. **Zobacz bramkę na czerwono** — celowo zepsuta zmiana w tymczasowym PR-ze, zamkniętym bez scalania, dowodzi, że status umie być czerwony i że komunikat wskazuje regułę.
 37. **Sprawdź, co plan konta pozwala egzekwować, zanim zbudujesz bramkę** — reguła ochrony w prywatnym repo na darmowym planie jest zapisana, ale nieegzekwowana.
+38. **Postaw nową funkcję sklepu na pustej bazie przed pisaniem testów** — gałąź kasy nie wstawała; dwa błędy opisane agentowi sklepu i sprawdzone po jego poprawce.
+39. **Dopasuj testy do zamierzonej zmiany bez osłabiania ich** — kontrakt koszyka, limit stanu w koszyku (A-CART-14), wyścig o ostatnią sztukę zamiast usunięcia „Brak stanu”, kasa z dostawą w E-01; gałąź `feat/payu` w parze ze sklepem.
 
 ---
 
@@ -998,6 +1025,11 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 ### Do czego służą `concurrency` i `cancel-in-progress` w workflow i jak wpływają na sprzątanie?
 - **Odpowiedź:** `concurrency` z grupą po nazwie gałęzi sprawia, że nowy push do tego samego PR-a anuluje trwający przebieg (`cancel-in-progress: true`). Oszczędza to minuty (w prywatnym repo są limitowane) i pilnuje, żeby status przy PR-ze dotyczył ostatniego commita. Anulowanie przerywa zadanie w środku, więc kroki sprzątania i zbierania logów muszą mieć warunek, który działa po anulowaniu: `if: always()` albo `failure() || cancelled()`. Samo `failure()` po anulowaniu się nie uruchomi.
 - **Dowód:** `tests.yml` w repo sklepu (grupa `tests-${{ github.head_ref }}`, kroki „Sprzątanie” i logi kontenerów).
+
+### Test pada po zmianie w aplikacji. Jak odróżniasz zamierzoną zmianę od błędu?
+- **Odpowiedź:** porównuję porażkę ze specyfikacją zmiany. Jeśli spec opisuje nowe zachowanie, test był poprawny dla starej wersji i trzeba go dopasować; jeśli nie opisuje, to błąd i zgłaszam go twórcy. Dopasowanie nie może osłabić testu: dalej sprawdza to samo wymaganie, tylko w nowym scenariuszu.
+- **U mnie:** kasa w sklepie złamała 6 testów i wszystkie 6 wynikały ze specu. Koszyk przestał przyjmować ilość ponad stan, więc „Brak stanu” przy zamówieniu sprawdzam teraz scenariuszem „kto pierwszy, ten lepszy”: dwóch klientów ma w koszyku tę samą ostatnią sztukę, B zamawia pierwszy, potem A dostaje błąd, a baza nie ma jego zamówienia. To scenariusz po kolei, deterministyczny, a nie test dwóch zamówień w tej samej chwili (współbieżności). Najprościej byłoby usunąć to sprawdzenie, ale wtedy zamówienie ponad stan przestałoby być pilnowane.
+- **Dowód:** sekcja 2 („Kasa, krok 1”), `tests/api/test_orders.py` (A-ORD-05), `tests/db/test_orders_db.py` (D-ORD-05, D-ORD-06).
 
 ---
 

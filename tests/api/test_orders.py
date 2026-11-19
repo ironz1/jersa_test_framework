@@ -50,15 +50,19 @@ def test_order_without_shipping_field_is_rejected(shop, product, field):
     assert len(_cart_lines(shop)) == 1
 
 
-def test_order_above_stock_is_rejected(shop, make_product):
-    """A-ORD-05: zamówienie ponad stan jest odrzucane, koszyk zostaje."""
+def test_order_losing_last_unit_is_rejected(make_shop, make_product):
+    """A-ORD-05: zamówienie, które przegrało z innym klientem ostatnią sztukę, jest odrzucane;
+    koszyk zostaje."""
     scarce = make_product(stock={"36": 1})
-    shop.add_to_cart(scarce.slug, "36", quantity=2)
-    response = shop.create_order()
+    late, early = make_shop(), make_shop()
+    assert late.add_to_cart(scarce.slug, "36").status_code == 200
+    assert early.add_to_cart(scarce.slug, "36").status_code == 200
+    assert early.create_order().status_code == 200
+
+    response = late.create_order()
     assert response.status_code == 400
     assert response.json() == {"error": "Brak stanu"}
-    lines = _cart_lines(shop)
-    assert [line["quantity"] for line in lines] == [2]
+    assert [line["quantity"] for line in _cart_lines(late)] == [1]
 
 
 def test_second_order_from_same_cart_is_rejected(shop, placed_order):

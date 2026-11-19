@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-13",
+  "updated": "2026-11-19",
   "requirements": [
     {"id": "R1", "source": "właściciel sklepu, 2026-11-12", "text": "Szycie na miarę kosztuje +100 zł do ceny produktu. Nie ma wtedy dopłaty za rozmiar, a stan magazynowy się nie zmienia."},
     {"id": "R2", "source": "właściciel sklepu, 2026-11-12", "text": "Dopłata za rozmiar dotyczy tylko rozmiarów 50, 52, 54, 3XL, 4XL i 5XL. Kwoty ustawia admin, domyślnie 0.", "note": "Poza zakresem Etapu 3: dopłatę ustawia się w panelu admina. Sprawdzana jest tylko wartość domyślna 0 (A-CART-07)."},
@@ -17,14 +17,16 @@
     {"id": "R14", "source": "właściciel sklepu, 2026-11-12", "text": "Sklep startuje z danymi z seeda: produkty ze stanem magazynowym na każdy rozmiar.", "note": "Seed jeszcze się zmieni, więc testy nie zakładają konkretnych liczb."},
     {"id": "R15", "source": "właściciel sklepu, 2026-11-13", "text": "Dodanie do koszyka wymaga produktu oraz rozmiaru albo wyboru szycia na miarę."},
     {"id": "R16", "source": "właściciel sklepu, 2026-11-13", "text": "Zamówienie wymaga niepustego koszyka, e-maila i pełnego adresu dostawy (imię i nazwisko, ulica, miasto, kod pocztowy, telefon)."},
-    {"id": "R17", "source": "właściciel sklepu, 2026-11-13", "text": "Zamówienia na więcej sztuk, niż jest na stanie, nie da się złożyć. Koszyk i stan zostają bez zmian."},
+    {"id": "R17", "source": "właściciel sklepu, 2026-11-13", "text": "Zamówienia na więcej sztuk, niż jest na stanie, nie da się złożyć. Koszyk i stan zostają bez zmian.", "note": "Od kasy (2026-11-19) koszyk sam pilnuje stanu (R25), więc przy zamówieniu brak stanu zdarza się, gdy inny klient kupi ostatnią sztukę wcześniej."},
     {"id": "R18", "source": "właściciel sklepu, 2026-11-13", "text": "Złożenie zamówienia opróżnia koszyk. Z jednego koszyka powstaje jedno zamówienie."},
     {"id": "R19", "source": "właściciel sklepu, 2026-11-13", "text": "Start płatności zwraca adres strony płatności. Powtórzony start zwraca ten sam adres."},
     {"id": "R20", "source": "właściciel sklepu, 2026-11-13", "text": "Powiadomienie o udanej płatności oznacza zamówienie jako opłacone. Powtórzone powiadomienie jest rozpoznawane jako duplikat. Płatność w toku nic nie zmienia. Nieznany status jest odrzucany."},
     {"id": "R21", "source": "właściciel sklepu, 2026-11-13", "text": "Klient dodaje produkty do przechowalni i je z niej usuwa. Ten sam produkt nie pojawia się dwa razy."},
     {"id": "R22", "source": "właściciel sklepu, 2026-11-13", "text": "Zamówienie zapisuje e-mail, adres dostawy, pozycje i sumę."},
     {"id": "R23", "source": "konwencja projektu (ADR-002)", "text": "Odpowiedzi API mają stały kształt opisany schematem. Nowe, usunięte albo zmienione pole to złamanie kontraktu."},
-    {"id": "R24", "source": "właściciel sklepu, 2026-11-12", "text": "Klient może w przeglądarce znaleźć produkt, dodać go do koszyka, zamówić i zobaczyć status płatności."}
+    {"id": "R24", "source": "właściciel sklepu, 2026-11-12", "text": "Klient może w przeglądarce znaleźć produkt, dodać go do koszyka, zamówić i zobaczyć status płatności."},
+    {"id": "R25", "source": "spec kasy sklepu, 2026-11-17", "text": "Koszyk nie przyjmuje więcej sztuk rozmiaru, niż jest na stanie: „Dostępnych jest N szt.”, przy zerowym stanie „Brak stanu”. Szycie na miarę nie ma tego limitu."},
+    {"id": "R26", "source": "spec kasy sklepu, 2026-11-17, rozdział 3", "text": "Suma zamówienia = produkty po rabacie + cena dostawy z listy sklepu (Polska: odbiór osobisty 0 zł, Poczta Polska 14 zł, Kurier DPD 15 zł).", "note": "Krok 1 sprawdza dostawę bez kodu (E-01). Rabaty i lista dostaw: krok 2."}
   ],
   "cases": [
     {"id": "K-01", "level": "Kontrakt", "smoke": true, "reqs": ["R23"], "status": "zautomatyzowany", "title": "Wynik wyszukiwania zgodny ze schematem", "tests": ["tests/contract/test_search_contract.py::test_search_matches_contract"]},
@@ -50,12 +52,13 @@
     {"id": "A-CART-11", "level": "API", "reqs": ["R10"], "status": "zautomatyzowany", "title": "Usunięcie pozycji zostawia pozostałe", "tests": ["tests/api/test_cart.py::test_remove_line_keeps_other_lines"]},
     {"id": "A-CART-12", "level": "API", "reqs": ["R12"], "status": "zautomatyzowany", "title": "Dwóch klientów ma osobne koszyki", "tests": ["tests/api/test_cart.py::test_carts_are_separate_per_customer"]},
     {"id": "A-CART-13", "level": "API", "reqs": ["R12"], "status": "zautomatyzowany", "title": "Koszyk zachowuje się między żądaniami tego samego klienta", "tests": ["tests/api/test_cart.py::test_cart_survives_next_request"]},
+    {"id": "A-CART-14", "level": "API", "reqs": ["R25", "R13"], "status": "zautomatyzowany", "title": "Koszyk nie przyjmuje ilości ponad stan rozmiaru (dodanie, kolejne dodanie, zmiana ilości); szycie na miarę bez limitu", "tests": ["tests/api/test_cart.py::test_add_above_stock_is_rejected", "tests/api/test_cart.py::test_growing_quantity_above_stock_is_rejected", "tests/api/test_cart.py::test_made_to_measure_has_no_stock_limit"]},
 
     {"id": "A-ORD-01", "level": "API", "smoke": true, "reqs": ["R18"], "status": "zautomatyzowany", "title": "Zamówienie z koszyka zwraca identyfikator i token; koszyk jest potem pusty", "tests": ["tests/api/test_orders.py::test_order_from_cart"]},
     {"id": "A-ORD-02", "level": "API", "reqs": ["R16", "R13"], "status": "zautomatyzowany", "title": "Zamówienie z pustego koszyka jest odrzucane: „Koszyk jest pusty”", "tests": ["tests/api/test_orders.py::test_order_from_empty_cart_is_rejected"]},
     {"id": "A-ORD-03", "level": "API", "reqs": ["R16", "R13"], "status": "zautomatyzowany", "title": "Zamówienie bez e-maila jest odrzucane: „Brak e-maila”", "tests": ["tests/api/test_orders.py::test_order_without_email_is_rejected"]},
     {"id": "A-ORD-04", "level": "API", "reqs": ["R16", "R13"], "status": "zautomatyzowany", "title": "Zamówienie bez jednego z pięciu pól adresu jest odrzucane: „Brak danych dostawy”", "tests": ["tests/api/test_orders.py::test_order_without_shipping_field_is_rejected"]},
-    {"id": "A-ORD-05", "level": "API", "reqs": ["R17", "R13"], "status": "zautomatyzowany", "title": "Zamówienie ponad stan jest odrzucane: „Brak stanu”; koszyk zostaje", "tests": ["tests/api/test_orders.py::test_order_above_stock_is_rejected"]},
+    {"id": "A-ORD-05", "level": "API", "reqs": ["R17", "R13"], "status": "zautomatyzowany", "title": "Zamówienie, które przegrało z innym klientem ostatnią sztukę, jest odrzucane: „Brak stanu”; koszyk zostaje", "tests": ["tests/api/test_orders.py::test_order_losing_last_unit_is_rejected"]},
     {"id": "A-ORD-06", "level": "API", "reqs": ["R18"], "status": "zautomatyzowany", "title": "Drugie zamówienie z tego samego koszyka jest odrzucane", "tests": ["tests/api/test_orders.py::test_second_order_from_same_cart_is_rejected"]},
 
     {"id": "A-PAY-01", "level": "API", "smoke": true, "reqs": ["R19"], "status": "zautomatyzowany", "title": "Start płatności zwraca adres strony płatności", "tests": ["tests/api/test_payments.py::test_start_payment_returns_payment_page"]},
@@ -94,8 +97,8 @@
     {"id": "D-ORD-02", "level": "Baza", "reqs": ["R3"], "status": "zautomatyzowany", "title": "Zamówienie 2 sztuk zmniejsza stan rozmiaru o 2", "tests": ["tests/db/test_orders_db.py::test_order_reserves_stock"]},
     {"id": "D-ORD-03", "level": "Baza", "reqs": ["R1"], "status": "zautomatyzowany", "title": "Zamówienie na miarę: suma = cena + 100 zł, stan bez zmian", "tests": ["tests/db/test_orders_db.py::test_made_to_measure_order_keeps_stock"]},
     {"id": "D-ORD-04", "level": "Baza", "reqs": ["R5"], "status": "zautomatyzowany", "title": "Suma zamówienia liczona od ceny promocyjnej", "tests": ["tests/db/test_orders_db.py::test_promo_price_goes_into_total"]},
-    {"id": "D-ORD-05", "level": "Baza", "reqs": ["R17"], "status": "zautomatyzowany", "title": "Odrzucone zamówienie nie zostawia wiersza ani zmiany stanu", "tests": ["tests/db/test_orders_db.py::test_rejected_order_leaves_no_trace"]},
-    {"id": "D-ORD-06", "level": "Baza", "reqs": ["R17"], "status": "zautomatyzowany", "title": "Odrzucone zamówienie z kilkoma pozycjami nie zmienia też stanu pozycji, które mieściły się w stanie", "tests": ["tests/db/test_orders_db.py::test_rejected_order_with_several_lines_changes_nothing"]},
+    {"id": "D-ORD-05", "level": "Baza", "reqs": ["R17"], "status": "zautomatyzowany", "title": "Zamówienie, które przegrało wyścig o ostatnią sztukę, nie zostawia wiersza ani zmiany stanu", "tests": ["tests/db/test_orders_db.py::test_rejected_order_leaves_no_trace"]},
+    {"id": "D-ORD-06", "level": "Baza", "reqs": ["R17"], "status": "zautomatyzowany", "title": "Gdy jedna pozycja przegrała wyścig o ostatnią sztukę, odrzucone zamówienie nie zmienia też stanu pozostałych pozycji", "tests": ["tests/db/test_orders_db.py::test_rejected_order_with_several_lines_changes_nothing"]},
     {"id": "D-ORD-07", "level": "Baza", "reqs": ["R5"], "status": "zautomatyzowany", "title": "Cena promocyjna z połówką złotego jest zaokrąglana w górę (25 zł, rabat 10%: suma 23 zł)", "tests": ["tests/db/test_orders_db.py::test_promo_price_rounds_half_up"]},
     {"id": "D-PAY-01", "level": "Baza", "reqs": ["R6", "R20"], "status": "zautomatyzowany", "title": "Udana płatność: status „opłacone”, stan bez zmian", "tests": ["tests/db/test_payments_db.py::test_completed_payment_marks_order_paid"]},
     {"id": "D-PAY-02", "level": "Baza", "reqs": ["R6", "R7"], "status": "zautomatyzowany", "title": "Anulowana płatność: status „anulowane”, stan wraca", "tests": ["tests/db/test_payments_db.py::test_canceled_payment_returns_stock"]},
@@ -104,7 +107,7 @@
     {"id": "D-REV-01", "level": "Baza", "reqs": ["R9"], "status": "zautomatyzowany", "title": "Opinia zapisuje się bez spacji wokół imienia i treści", "tests": ["tests/db/test_reviews_db.py::test_review_is_stored_trimmed"]},
 
     {"id": "E-00", "level": "E2E", "smoke": true, "reqs": ["R24"], "status": "zautomatyzowany", "title": "Strona produktu pokazuje nazwę", "tests": ["tests/e2e/test_product_page_smoke.py::test_product_page_shows_name"]},
-    {"id": "E-01", "level": "E2E", "smoke": true, "reqs": ["R24"], "status": "zautomatyzowany", "title": "Zakup: strona produktu → rozmiar → koszyk → kasa → zamówienie → opłacone", "tests": ["tests/e2e/test_purchase.py::test_guest_buys_product"]},
+    {"id": "E-01", "level": "E2E", "smoke": true, "reqs": ["R24", "R26"], "status": "zautomatyzowany", "title": "Zakup: strona produktu → rozmiar → koszyk → kasa z dostawą → zamówienie (suma z dostawą) → opłacone", "tests": ["tests/e2e/test_purchase.py::test_guest_buys_product"]},
     {"id": "E-02", "level": "E2E", "reqs": ["R15"], "status": "zautomatyzowany", "title": "Dodanie do koszyka bez rozmiaru pokazuje komunikat; koszyk pusty", "tests": ["tests/e2e/test_cart_e2e.py::test_size_is_required"]},
     {"id": "E-03", "level": "E2E", "reqs": ["R8", "R24"], "status": "zautomatyzowany", "title": "Wyszukanie produktu i przejście na jego stronę", "tests": ["tests/e2e/test_search_e2e.py::test_search_leads_to_product"]},
     {"id": "E-04", "level": "E2E", "reqs": ["R21"], "status": "zautomatyzowany", "title": "Serduszko na stronie produktu dodaje go do przechowalni", "tests": ["tests/e2e/test_wishlist_e2e.py::test_heart_adds_to_wishlist"]}

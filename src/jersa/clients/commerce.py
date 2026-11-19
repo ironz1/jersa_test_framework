@@ -18,6 +18,15 @@ SHIPPING = {
     "postalCode": "90-001",
     "phone": "500000000",
 }
+# Kupująca w kasie (`/kasa`): klucze jak w polu `checkout` zamówienia sklepu.
+BUYER = {
+    "firstName": "Anna",
+    "lastName": "Nowak",
+    "phone": "500000000",
+    "street": "Piotrkowska 1",
+    "postalCode": "90-001",
+    "city": "Łódź",
+}
 
 _CART = "/api/commerce/cart"
 _ORDERS = "/api/commerce/orders"

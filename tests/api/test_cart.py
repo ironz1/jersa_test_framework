@@ -111,3 +111,40 @@ def test_cart_survives_next_request(shop, product):
     assert again.status_code == 200
     assert again.json() == added.json()
     assert len(again.json()["lines"]) == 1
+
+
+@pytest.mark.parametrize(
+    ("stock", "error"),
+    [({"36": 2}, "Dostępnych jest 2 szt."), ({"36": 0, "38": 1}, "Brak stanu")],
+    ids=["ponad-stan", "zerowy-stan"],
+)
+def test_add_above_stock_is_rejected(shop, make_product, stock, error):
+    """A-CART-14: dodanie więcej sztuk, niż jest na stanie rozmiaru, jest odrzucane."""
+    scarce = make_product(stock=stock)
+    response = shop.add_to_cart(scarce.slug, "36", quantity=3)
+    assert response.status_code == 400
+    assert response.json() == {"error": error}
+    assert _lines(shop.cart()) == []
+
+
+def test_growing_quantity_above_stock_is_rejected(shop, make_product):
+    """A-CART-14: kolejne dodanie albo zmiana ilości ponad stan rozmiaru jest odrzucana."""
+    scarce = make_product(stock={"36": 2})
+    line_id = _lines(shop.add_to_cart(scarce.slug, "36", quantity=2))[0]["id"]
+    rejected = {"error": "Dostępnych jest 2 szt."}
+
+    added = shop.add_to_cart(scarce.slug, "36", quantity=1)
+    assert added.status_code == 400
+    assert added.json() == rejected
+
+    changed = shop.set_quantity(line_id, 3)
+    assert changed.status_code == 400
+    assert changed.json() == rejected
+    assert [line["quantity"] for line in _lines(shop.cart())] == [2]
+
+
+def test_made_to_measure_has_no_stock_limit(shop, make_product):
+    """A-CART-14: szycie na miarę nie ma limitu stanu."""
+    tailored = make_product(stock={"36": 0}, made_to_measure=True)
+    lines = _lines(shop.add_to_cart(tailored.slug, MADE_TO_MEASURE, quantity=3, custom_fit=True))
+    assert [line["quantity"] for line in lines] == [3]
