@@ -9,6 +9,7 @@ pytest_plugins = [
     "jersa.fixtures.db",
     "jersa.fixtures.products",
     "jersa.fixtures.discounts",
+    "jersa.fixtures.admin",
     "jersa.fixtures.orders",
     "jersa.fixtures.browser",
 ]

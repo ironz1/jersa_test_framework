@@ -8,31 +8,8 @@ from jersa.clients.commerce import (
 )
 
 
-class RecordingClient:
-    """Atrapa `ApiClient`: zapisuje wywołania zamiast wysyłać żądania."""
-
-    def __init__(self):
-        self.calls = []
-
-    def _record(self, method, path, **kwargs):
-        self.calls.append((method, path, kwargs))
-        return "response"
-
-    def get(self, path, **kwargs):
-        return self._record("GET", path, **kwargs)
-
-    def post(self, path, **kwargs):
-        return self._record("POST", path, **kwargs)
-
-    def patch(self, path, **kwargs):
-        return self._record("PATCH", path, **kwargs)
-
-    def delete(self, path, **kwargs):
-        return self._record("DELETE", path, **kwargs)
-
-
-def test_add_to_cart_sends_all_fields():
-    client = RecordingClient()
+def test_add_to_cart_sends_all_fields(recording_client):
+    client = recording_client
     assert (
         CommerceApi(client).add_to_cart("p", size="38", quantity=2, custom_fit=True) == "response"
     )
@@ -45,16 +22,16 @@ def test_add_to_cart_sends_all_fields():
     ]
 
 
-def test_add_to_cart_defaults():
-    client = RecordingClient()
+def test_add_to_cart_defaults(recording_client):
+    client = recording_client
     CommerceApi(client).add_to_cart("p")
     assert client.calls[0][2] == {
         "json": {"productSlug": "p", "size": "36", "quantity": 1, "customFit": False}
     }
 
 
-def test_create_order_defaults_to_standard_customer():
-    client = RecordingClient()
+def test_create_order_defaults_to_standard_customer(recording_client):
+    client = recording_client
     CommerceApi(client).create_order()
     method, path, kwargs = client.calls[0]
     assert (method, path) == ("POST", "/api/commerce/orders")
@@ -62,8 +39,8 @@ def test_create_order_defaults_to_standard_customer():
     assert kwargs["json"]["shipping"] is not SHIPPING
 
 
-def test_notify_sends_order_id_twice():
-    client = RecordingClient()
+def test_notify_sends_order_id_twice(recording_client):
+    client = recording_client
     CommerceApi(client).notify("o-1", "COMPLETED")
     assert client.calls == [
         (
@@ -74,34 +51,34 @@ def test_notify_sends_order_id_twice():
     ]
 
 
-def test_search_uses_query_param():
-    client = RecordingClient()
+def test_search_uses_query_param(recording_client):
+    client = recording_client
     CommerceApi(client).search("x")
     assert client.calls == [("GET", "/api/commerce/search", {"params": {"q": "x"}})]
 
 
-def test_remove_wish_uses_delete():
-    client = RecordingClient()
+def test_remove_wish_uses_delete(recording_client):
+    client = recording_client
     CommerceApi(client).remove_wish("p")
     assert client.calls == [("DELETE", "/api/commerce/wishlist", {"json": {"productSlug": "p"}})]
 
 
-def test_apply_discount_sends_code():
-    client = RecordingClient()
+def test_apply_discount_sends_code(recording_client):
+    client = recording_client
     CommerceApi(client).apply_discount("LATO10")
     assert client.calls == [("POST", "/api/commerce/discount", {"json": {"code": "LATO10"}})]
 
 
-def test_checkout_order_wraps_body_in_checkout():
-    client = RecordingClient()
+def test_checkout_order_wraps_body_in_checkout(recording_client):
+    client = recording_client
     CommerceApi(client).checkout_order({"email": "a@b.pl"})
     assert client.calls == [
         ("POST", "/api/commerce/orders", {"json": {"checkout": {"email": "a@b.pl"}}})
     ]
 
 
-def test_notify_sends_total_amount_only_when_given():
-    client = RecordingClient()
+def test_notify_sends_total_amount_only_when_given(recording_client):
+    client = recording_client
     api = CommerceApi(client)
     api.notify("o1", "COMPLETED")
     api.notify("o1", "COMPLETED", total_amount="19500")
