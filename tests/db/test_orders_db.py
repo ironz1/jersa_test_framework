@@ -84,24 +84,39 @@ def test_promo_price_rounds_half_up(db, shop, make_product):
     assert row["total"] == 23
 
 
-def test_rejected_order_leaves_no_trace(db, shop, make_product):
-    """D-ORD-05: odrzucone zamówienie nie zostawia wiersza ani zmiany stanu."""
+def _buy_last_unit_first(make_shop, slug, size):
+    """Drugi klient kupuje ostatnią sztukę rozmiaru. Zwraca ID jego zamówienia."""
+    early = make_shop()
+    assert early.add_to_cart(slug, size).status_code == 200
+    response = early.create_order()
+    assert response.status_code == 200, response.text
+    return response.json()["order"]["id"]
+
+
+def test_rejected_order_leaves_no_trace(db, make_shop, make_product):
+    """D-ORD-05: zamówienie, które przegrało wyścig o ostatnią sztukę, nie zostawia wiersza
+    ani zmiany stanu."""
     scarce = make_product(stock={"36": 1})
-    assert shop.add_to_cart(scarce.slug, "36", quantity=2).status_code == 200
-    assert shop.create_order().status_code == 400
+    late = make_shop()
+    assert late.add_to_cart(scarce.slug, "36").status_code == 200
+    winner_id = _buy_last_unit_first(make_shop, scarce.slug, "36")
+    assert late.create_order().status_code == 400
 
-    assert orders_of(db, scarce.slug) == []
-    assert read_stock(db, scarce.slug) == scarce.stock
+    assert [row["id"] for row in orders_of(db, scarce.slug)] == [winner_id]
+    assert read_stock(db, scarce.slug) == {"36": 0}
 
 
-def test_rejected_order_with_several_lines_changes_nothing(db, shop, make_product):
-    """D-ORD-06: gdy druga pozycja przekracza stan, nie zmienia się też stan pierwszej."""
+def test_rejected_order_with_several_lines_changes_nothing(db, make_shop, make_product):
+    """D-ORD-06: gdy druga pozycja przegrała wyścig o ostatnią sztukę, nie zmienia się też stan
+    pierwszej."""
     mixed = make_product(stock={"36": 5, "38": 1})
-    assert shop.add_to_cart(mixed.slug, "36", quantity=1).status_code == 200
-    assert shop.add_to_cart(mixed.slug, "38", quantity=2).status_code == 200
-    response = shop.create_order()
+    late = make_shop()
+    assert late.add_to_cart(mixed.slug, "36").status_code == 200
+    assert late.add_to_cart(mixed.slug, "38").status_code == 200
+    winner_id = _buy_last_unit_first(make_shop, mixed.slug, "38")
+    response = late.create_order()
     assert response.status_code == 400
     assert response.json() == {"error": "Brak stanu"}
 
-    assert orders_of(db, mixed.slug) == []
-    assert read_stock(db, mixed.slug) == mixed.stock
+    assert [row["id"] for row in orders_of(db, mixed.slug)] == [winner_id]
+    assert read_stock(db, mixed.slug) == {"36": 5, "38": 0}
