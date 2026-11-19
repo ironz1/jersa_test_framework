@@ -110,11 +110,17 @@ def test_shipping_address(db, shop, product, second):
 
 
 def test_snapshot_survives_code_disable(db, shop, make_product, make_discount_code):
-    """D-CHK-05: wyłączenie kodu po złożeniu zamówienia nie zmienia odpisu ani sumy."""
+    """D-CHK-05: wyłączenie kodu po złożeniu zamówienia nie zmienia odpisu ani sumy: sklep
+    przyjmuje potem płatność na sumę z rabatem."""
     _, discount = _cart_with_code(shop, make_product, make_discount_code)
     before = _checkout(shop, db)
     set_code_active(db, discount.id, False)
+
+    # Sklep musi coś zrobić z zamówieniem po wyłączeniu kodu; sam odczyt z bazy tego nie sprawdzi.
+    paid = shop.notify(before["id"], "COMPLETED", total_amount="19500")
+    assert paid.status_code == 200, paid.text
     after = get_order(db, before["id"])
+    assert after["status"] == "paid"
     assert after["checkoutJson"] == before["checkoutJson"]
     assert after["total"] == before["total"] == 195
 
