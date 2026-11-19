@@ -1,4 +1,11 @@
-from jersa.clients.commerce import EMAIL, SHIPPING, CommerceApi
+from jersa.clients.commerce import (
+    BUYER,
+    EMAIL,
+    SHIPPING,
+    SHIPPING_METHODS,
+    CommerceApi,
+    checkout_body,
+)
 
 
 class RecordingClient:
@@ -77,3 +84,51 @@ def test_remove_wish_uses_delete():
     client = RecordingClient()
     CommerceApi(client).remove_wish("p")
     assert client.calls == [("DELETE", "/api/commerce/wishlist", {"json": {"productSlug": "p"}})]
+
+
+def test_apply_discount_sends_code():
+    client = RecordingClient()
+    CommerceApi(client).apply_discount("LATO10")
+    assert client.calls == [("POST", "/api/commerce/discount", {"json": {"code": "LATO10"}})]
+
+
+def test_checkout_order_wraps_body_in_checkout():
+    client = RecordingClient()
+    CommerceApi(client).checkout_order({"email": "a@b.pl"})
+    assert client.calls == [
+        ("POST", "/api/commerce/orders", {"json": {"checkout": {"email": "a@b.pl"}}})
+    ]
+
+
+def test_notify_sends_total_amount_only_when_given():
+    client = RecordingClient()
+    api = CommerceApi(client)
+    api.notify("o1", "COMPLETED")
+    api.notify("o1", "COMPLETED", total_amount="19500")
+    plain, with_amount = (call[2]["json"] for call in client.calls)
+    assert "totalAmount" not in plain
+    assert with_amount == {
+        "orderId": "o1",
+        "extOrderId": "o1",
+        "status": "COMPLETED",
+        "totalAmount": "19500",
+    }
+
+
+# Pola `CheckoutDraft` sklepu (src/lib/checkout.ts): pełne poprawne pole `checkout`.
+CHECKOUT_KEYS = {
+    "buyerKind", "firstName", "lastName", "email", "phone", "companyName", "nip", "street",
+    "postalCode", "city", "country", "shipToDifferentAddress", "shipStreet", "shipPostalCode",
+    "shipCity", "shipCountry", "notes", "termsAccepted", "shippingMethodId",
+}  # fmt: skip
+
+
+def test_checkout_body_is_complete_and_overridable():
+    body = checkout_body()
+    assert set(body) == CHECKOUT_KEYS
+    assert body["email"] == EMAIL
+    assert body["termsAccepted"] is True
+    assert body["shippingMethodId"] in SHIPPING_METHODS
+    assert checkout_body(nip="1")["nip"] == "1"
+    body["firstName"] = "zmienione"
+    assert checkout_body()["firstName"] == BUYER["firstName"]

@@ -26,7 +26,8 @@ class Settings(BaseSettings):
 
     base_url: str
     database_url: str | None = None
-    admin_password: SecretStr | None = None
+    # Domyślnie wartość z docker-compose.yml, żeby bramka w CI działała bez ustawiania hasła.
+    admin_password: SecretStr = SecretStr("dev-admin")
     # Lokalny podgląd testów E2E w oknie przeglądarki. Domyślnie bez okna (tak działa CI).
     headed: bool = False
 
