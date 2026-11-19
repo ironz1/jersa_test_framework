@@ -233,6 +233,7 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - Dwa pełne przebiegi na sklepie z `feat/payu` (`eba7b3d`): 154 passed (87 testów sklepu, 67 frameworka), ok. 8 s na 4 procesach.
 - Asercje nowych i przepisanych testów sprawdzone mutacją, bo zachowanie sklepu już istniało: zmieniony komunikat stanu i dopłata 0 zł dały czerwone testy z czytelną różnicą.
 - Przed testami sklep z kasą nie wstawał na pustej bazie (sekcja 6); poprawka po stronie agenta sklepu.
+- **Kolejność scalania:** najpierw PR sklepu `feat/payu`, zaraz po nim PR testów `feat/payu`. Testy z kasą na `main` repo testów przed kasą na `main` sklepu dałyby czerwień każdemu innemu PR-owi sklepu (te same 6 testów, tylko odwrotnie), a sklep z kasą bez testów z kasą – tak samo. Gałęzi testów nie usuwać przed scaleniem PR-a sklepu.
 
 **Czego się nauczyłem**
 - Gdy test pada po zmianie w aplikacji, najpierw spec: jeśli zmiana jest zamierzona, test dopasowuję tak, żeby sprawdzał to samo wymaganie, a nie usuwam sprawdzenia. „Brak stanu” przy zamówieniu został, tylko z realnym scenariuszem.
@@ -1027,7 +1028,7 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 
 ### Test pada po zmianie w aplikacji. Jak odróżniasz zamierzoną zmianę od błędu?
 - **Odpowiedź:** porównuję porażkę ze specyfikacją zmiany. Jeśli spec opisuje nowe zachowanie, test był poprawny dla starej wersji i trzeba go dopasować; jeśli nie opisuje, to błąd i zgłaszam go twórcy. Dopasowanie nie może osłabić testu: dalej sprawdza to samo wymaganie, tylko w nowym scenariuszu.
-- **U mnie:** kasa w sklepie złamała 6 testów i wszystkie 6 wynikały ze specu. Koszyk przestał przyjmować ilość ponad stan, więc „Brak stanu” przy zamówieniu sprawdzam teraz wyścigiem: dwóch klientów, jedna sztuka, przegrany dostaje błąd, a baza nie ma jego zamówienia. Najprościej byłoby usunąć to sprawdzenie, ale wtedy zamówienie ponad stan przestałoby być pilnowane.
+- **U mnie:** kasa w sklepie złamała 6 testów i wszystkie 6 wynikały ze specu. Koszyk przestał przyjmować ilość ponad stan, więc „Brak stanu” przy zamówieniu sprawdzam teraz scenariuszem „kto pierwszy, ten lepszy”: dwóch klientów ma w koszyku tę samą ostatnią sztukę, B zamawia pierwszy, potem A dostaje błąd, a baza nie ma jego zamówienia. To scenariusz po kolei, deterministyczny, a nie test dwóch zamówień w tej samej chwili (współbieżności). Najprościej byłoby usunąć to sprawdzenie, ale wtedy zamówienie ponad stan przestałoby być pilnowane.
 - **Dowód:** sekcja 2 („Kasa, krok 1”), `tests/api/test_orders.py` (A-ORD-05), `tests/db/test_orders_db.py` (D-ORD-05, D-ORD-06).
 
 ---
