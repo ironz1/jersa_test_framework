@@ -10,7 +10,7 @@ from jersa.pages.product_page import ProductPage
 
 @pytest.mark.regression
 def test_guest_buys_with_discount_code(page, make_product, make_discount_code):
-    """E-04: gość stosuje kod rabatowy w koszyku i płaci w kasie sumę z rabatem i dostawą."""
+    """E-05: gość stosuje kod rabatowy w koszyku i płaci w kasie sumę z rabatem i dostawą."""
     own = make_product(amount=200)
     code = make_discount_code(kind="percent", value=10)
 

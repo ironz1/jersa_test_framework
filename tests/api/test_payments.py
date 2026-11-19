@@ -119,7 +119,7 @@ def _checkout_with_code(shop, make_product, make_discount_code):
 
 
 def test_notify_with_matching_amount_marks_paid(shop, db, make_product, make_discount_code):
-    """A-PAY-01: powiadomienie z kwotą w groszach równą sumie zamówienia (z rabatem i dostawą)
+    """A-PAY-12: powiadomienie z kwotą w groszach równą sumie zamówienia (z rabatem i dostawą)
     oznacza zamówienie jako opłacone."""
     order_id = _checkout_with_code(shop, make_product, make_discount_code)
     response = shop.notify(order_id, "COMPLETED", total_amount="19500")
@@ -129,7 +129,7 @@ def test_notify_with_matching_amount_marks_paid(shop, db, make_product, make_dis
 
 @pytest.mark.parametrize("amount", ["19400", "195"], ids=["inna-kwota", "zlote-zamiast-groszy"])
 def test_notify_with_wrong_amount_is_rejected(shop, db, make_product, make_discount_code, amount):
-    """A-PAY-02: powiadomienie z kwotą inną niż suma zamówienia jest odrzucane; status bez
+    """A-PAY-13: powiadomienie z kwotą inną niż suma zamówienia jest odrzucane; status bez
     zmian."""
     order_id = _checkout_with_code(shop, make_product, make_discount_code)
     response = shop.notify(order_id, "COMPLETED", total_amount=amount)
