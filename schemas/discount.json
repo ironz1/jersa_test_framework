@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "discount.json",
+  "title": "Kod rabatowy na koszyku: POST /api/commerce/discount (200)",
+  "description": "Spisane z odpowiedzi z 2026-11-19. Błąd (400) ma kształt error.json.",
+  "type": "object",
+  "required": [
+    "ok",
+    "discount"
+  ],
+  "properties": {
+    "ok": {
+      "const": true
+    },
+    "discount": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

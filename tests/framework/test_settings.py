@@ -118,3 +118,10 @@ def test_headed_can_be_turned_on_in_env_file(tmp_path, clean_env):
 )
 def test_browser_is_headed_when_cli_or_env_asks(cli_headed, env_headed, expected):
     assert is_headed(cli_headed, env_headed) is expected
+
+
+def test_admin_password_defaults_to_compose_value(clean_env, monkeypatch):
+    monkeypatch.setenv("BASE_URL", "http://shop.test")
+    assert Settings(_env_file=None).admin_password.get_secret_value() == "dev-admin"
+    monkeypatch.setenv("ADMIN_PASSWORD", "x")
+    assert Settings(_env_file=None).admin_password.get_secret_value() == "x"

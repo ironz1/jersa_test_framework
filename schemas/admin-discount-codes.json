@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "admin-discount-codes.json",
+  "title": "Lista kodów rabatowych: GET /api/admin/discount-codes",
+  "description": "Spisane z odpowiedzi z 2026-11-19.",
+  "type": "object",
+  "required": [
+    "codes"
+  ],
+  "properties": {
+    "codes": {
+      "type": "array",
+      "items": {
+        "$ref": "admin-discount-code.json#/$defs/discountCode"
+      }
+    }
+  },
+  "additionalProperties": false
+}

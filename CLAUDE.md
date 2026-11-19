@@ -29,7 +29,8 @@ tests/framework/               # testy samego frameworka (bez sklepu, w CI)
 schemas/                       # schematy JSON per endpoint
 src/jersa/{clients,pages,db,schemas,fixtures}/  # klient HTTP, page objecty, SQL, loader schematów, fixtures
 src/jersa/clients/commerce.py  # CommerceApi: jedna metoda na endpoint sklepu (fixtures shop, make_shop)
-src/jersa/db/{products,orders}.py  # własny produkt testu, odczyt zamówień
+src/jersa/db/{products,orders,discount_codes}.py  # własny produkt i kod rabatowy testu, odczyt zamówień
+src/jersa/clients/admin.py     # AdminApi: panel kodów (fixture admin: logowanie w przeglądarce raz na proces)
 src/jersa/traceability.py  scripts/build_traceability.py  docs/traceability.json  # macierz śledzenia
 src/jersa/config.py            # Settings (pydantic-settings) z .env
 conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/workflows/ci.yml
@@ -40,7 +41,7 @@ conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/
 - Markery pytesta przecinają poziomy testów: każdy test sklepu ma `regression`, ścieżka krytyczna dodatkowo `smoke`, kontrakt dodatkowo `contract`.
 - Piramida: im wyższy poziom (E2E), tym mniej scenariuszy.
 - Dane testowe: unikalny prefiks uuid w danych każdego testu; teardown usuwa **tylko własne rekordy po ID**. Nigdy nie czyścimy całych tabel.
-- Własny produkt na test (ADR-012): test, który coś kupuje albo dodaje opinię, bierze produkt z fixture `product` / `make_product(...)` (`test-<hex>`), nigdy produkt z seeda. Seed jest tylko czytany. Asercje stanu magazynowego porównują ze stanem sprzed akcji, bez liczb seeda na sztywno (ADR-013).
+- Własny produkt na test (ADR-012): test, który coś kupuje albo dodaje opinię, bierze produkt z fixture `product` / `make_product(...)` (`test-<hex>`), nigdy produkt z seeda. Seed jest tylko czytany. Asercje stanu magazynowego porównują ze stanem sprzed akcji, bez liczb seeda na sztywno (ADR-013). Kody rabatowe tak samo: `make_discount_code(...)` (`test-<hex>`, sprzątanie po ID, ADR-017).
 - Testy zachowań, które sklep ma dopiero poprawić, nie trafiają do publicznego repo przed poprawką (ADR-014); `xfail` z opisem słabości też nie.
 - Schematy kontraktów: `additionalProperties: false`, spisywane z realnych odpowiedzi.
 - Testy muszą być niezależne i działać równolegle (pytest-xdist).
@@ -61,4 +62,4 @@ conftest.py  pyproject.toml  uv.lock  .env.example  docker-compose.yml  .github/
 
 ## Status projektu
 
-**Aktualny etap:** Etap 5 — CI. Równolegle kasa sklepu (`feat/payu`): krok 1 zrobiony 2026-11-19 na gałęzi testów `feat/payu` (dopasowanie 6 testów, A-CART-14, R25–R26; 154 testy), czeka na scalenie pary PR-ów (najpierw sklep, zaraz po nim testy); krok 2 (nowe testy kasy) po scaleniu kasy na `main` sklepu. 5A zrobione 2026-11-17: bramka testów na PR sklepu (workflow `tests` w repo sklepu, ADR-016), informacyjna, bo reguła ochrony nie jest egzekwowana w prywatnym repo na darmowym planie; zostaje 5B (job w repo testów, nightly, smoke po deployu, raporty, egzekwowanie na wdrożeniu). Etap 4 — równoległość (`-n 4`) zrobiony 2026-11-16. Etap 3, krok A zrobiony 2026-11-13 (83 testy sklepu + 65 frameworka, macierz śledzenia; po Etapie 4 frameworka jest 67); krok B (kolejne testy API) czeka na zmianę w sklepie. Etap 2 zamknięty 2026-11-06; repo publiczne <https://github.com/ironz1/jersa_test_framework>. Sklep w Dockerze: `docker compose up -d --build --wait` (`127.0.0.1:3100`).
+**Aktualny etap:** Etap 5 — CI. Równolegle kasa sklepu: krok 1 zrobiony i scalony 2026-11-19 w parze z `feat/payu` sklepu (dopasowanie 6 testów, A-CART-14, R25–R26; 154 testy, bramka zielona); krok 2 zrobiony 2026-11-19 na gałęzi `kasa-krok-2` (69 nowych testów: kody rabatowe, kasa przez API, odpis w bazie, kwota PayU, panel kodów, E-05; R27–R34, ADR-017; 237 testów), czeka na PR. 5A zrobione 2026-11-17: bramka testów na PR sklepu (workflow `tests` w repo sklepu, ADR-016), informacyjna, bo reguła ochrony nie jest egzekwowana w prywatnym repo na darmowym planie; zostaje 5B (job w repo testów, nightly, smoke po deployu, raporty, egzekwowanie na wdrożeniu). Etap 4 — równoległość (`-n 4`) zrobiony 2026-11-16. Etap 3, krok A zrobiony 2026-11-13 (83 testy sklepu + 65 frameworka, macierz śledzenia; po Etapie 4 frameworka jest 67); krok B (kolejne testy API) czeka na zmianę w sklepie. Etap 2 zamknięty 2026-11-06; repo publiczne <https://github.com/ironz1/jersa_test_framework>. Sklep w Dockerze: `docker compose up -d --build --wait` (`127.0.0.1:3100`).

@@ -241,6 +241,24 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 **Projekt:** [`docs/superpowers/specs/2026-11-19-kasa-krok-1-design.md`](docs/superpowers/specs/2026-11-19-kasa-krok-1-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-19-kasa-krok-1.md`](docs/superpowers/plans/2026-11-19-kasa-krok-1.md)
 
+### Kasa, krok 2 — 2026-11-19 → 2026-11-19
+
+**Co powstało**
+- 69 nowych testów sklepu (licząc parametryzacje) dla kasy na `main` sklepu: kody rabatowe na koszyku (A-DISC-01…10), kasa przez API (A-CHK-01…08), odpis zamówienia w bazie (D-CHK-01…06), kwota w powiadomieniu o płatności (A-PAY-12, A-PAY-13), panel kodów (A-ADM-01…05), kontrakty odpowiedzi rabatu i panelu (K-10, K-11) i jeden E2E zakupu z kodem (E-05). Wymagania R27–R34.
+- Framework: `make_discount_code` (własny kod `test-<hex>` w bazie, sprzątanie po ID), metody `apply_discount` i `checkout_order`, kwota w `notify`, `checkout_body()` z pełnym poprawnym polem kasy, `AdminApi` z logowaniem przez formularz raz na proces (ADR-017), `CartPage`.
+
+**Wyniki**
+- Dwa pełne przebiegi: 237 passed (156 testów sklepu, 81 frameworka), ok. 13 s na 4 procesach; po przebiegach w bazie nie zostaje żaden kod testu.
+- Nowe testy nie znalazły zachowania niezgodnego ze spec. Jedną rozbieżność między spec a kodem (zły kod na koszyku z dobrym kodem) rozstrzygnął właściciel: obowiązuje zachowanie sklepu, poprzedni kod zostaje.
+- Asercje sprawdzone mutacją: zaokrąglenie rabatu (2 zamiast 3), suma bez dostawy, E2E bez rabatu dały czerwone testy z czytelną różnicą.
+
+**Czego się nauczyłem**
+- Test potrafi przejść z niewłaściwego powodu: koszyk przelicza kod przy każdym odczycie, więc po wyłączeniu kodu i tak pokazuje „bez kodu”. Dowód, że sklep naprawdę zdjął kod z koszyka, dał dopiero test, który włącza kod z powrotem i sprawdza koszyk jeszcze raz.
+- Dane wspólne dla całego sklepu (kody rabatowe) wymagają tego samego co produkty: własny prefiks, sprzątanie po ID i asercje, które nie zakładają, że innych kodów nie ma (szukanie na liście po ID, nie po długości listy).
+- Logowanie akcją serwera Next.js nie przejdzie zwykłym żądaniem HTTP. Przeglądarka loguje się raz na proces, a testy API dostają gotowe ciasteczko.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-19-kasa-krok-2-design.md`](docs/superpowers/specs/2026-11-19-kasa-krok-2-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-19-kasa-krok-2.md`](docs/superpowers/plans/2026-11-19-kasa-krok-2.md) · **ADR:** 017
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -561,6 +579,17 @@ core/           → konfiguracja, logowanie, klienci, utils
 - **Konsekwencje:** błąd w sklepie widać przy PR-ze po ok. 4 minutach, razem z logami i śladami. Zmiana zachowania sklepu i testów idzie parą gałęzi o tej samej nazwie; gałąź testów musi istnieć przed startem przebiegu, a oba PR-y scala się razem (sklep, zaraz po nim testy), bo inaczej kolejne PR-y sklepu są czerwone. Koszt: czerwony status nie blokuje Merge ani pushu na `main`, więc ochrona zależy od dyscypliny. Wrócić do tematu w 5B (bramka na wdrożeniu) albo po zakupie planu Pro. Budowa obrazu to 80% czasu przebiegu, więc w kolejnym kroku warto użyć cache albo gotowego obrazu.
 - **Na rozmowie:** Każdy pull request w sklepie buduje go w Dockerze i uruchamia moje testy, a wynik widać przy PR-ze. Sprawdziłem też, że bramka umie być czerwona, celowo psując cenę. Na darmowym planie GitHuba ta bramka tylko ostrzega, a nie blokuje, więc egzekwowanie dołożę na wdrożeniu albo przez płatny plan.
 
+### ADR-017: Kody rabatowe testu przez bazę, panel kodów przez logowanie w przeglądarce raz na proces
+- **Data:** 2026-11-19
+- **Kontekst:** testy kasy potrzebują kodów rabatowych (procent, kwota, wyłączony, po dacie). Kody są wspólne dla całego sklepu, a panel kodów wymaga logowania, które w sklepie jest akcją serwera Next.js (formularz), nie zwykłym endpointem.
+- **Rozważane opcje:**
+  - A — fixture wstawia kod do bazy (jak własny produkt, ADR-012); panel sprawdzają osobne testy po logowaniu w przeglądarce
+  - B — wszystko przez API panelu z ciasteczkiem wyliczonym w teście (HMAC hasła): szybkie, ale test zna wewnętrzny sposób liczenia tokenu
+  - C — wszystko przez API panelu po logowaniu w przeglądarce: najbliżej prawdziwego użycia, ale błąd panelu zatrzymuje też testy rabatów w kasie
+- **Decyzja:** A (wybór właściciela). `make_discount_code` wstawia kod `test-<hex>` i usuwa go po ID; datę końca ustawia dokładnie, a „dziś” liczy według Europe/Warsaw, tak jak sklep. Fixture `admin_cookie` loguje się przez formularz `/admin/login` raz na proces, fixture `admin` przenosi ciasteczko do sesji `requests` i po teście usuwa przez SQL kody, które test utworzył (panel umie kod tylko wyłączyć). Hasło domyślnie `dev-admin`, jak w `docker-compose.yml`, więc bramka w repo sklepu działa bez zmiany workflow.
+- **Konsekwencje:** każdy poziom testów ma jedną przyczynę porażki: błąd panelu nie psuje testów rabatów. Koszt: testy kodów i panelu wymagają bazy, więc na STG bez `DATABASE_URL` są pomijane (jak wszystkie testy z własnym produktem); testy panelu dostają parametr `[chromium]`, bo korzystają z przeglądarki. Wrócić do tematu, gdy sklep dostanie endpoint logowania albo usuwania kodów.
+- **Na rozmowie:** Kody rabatowe do testów wstawiam prosto do bazy, każdy test ma własny i sprząta go po sobie, tak samo jak własny produkt. Sam panel kodów testuję osobno: przeglądarka loguje się raz, a testy API używają jej ciasteczka. Dzięki temu błąd w panelu nie psuje testów rabatów w kasie.
+
 <!--
 ### ADR-001: <tytuł decyzji>
 - **Data:**
@@ -785,6 +814,9 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 37. **Sprawdź, co plan konta pozwala egzekwować, zanim zbudujesz bramkę** — reguła ochrony w prywatnym repo na darmowym planie jest zapisana, ale nieegzekwowana.
 38. **Postaw nową funkcję sklepu na pustej bazie przed pisaniem testów** — gałąź kasy nie wstawała; dwa błędy opisane agentowi sklepu i sprawdzone po jego poprawce.
 39. **Dopasuj testy do zamierzonej zmiany bez osłabiania ich** — kontrakt koszyka, limit stanu w koszyku (A-CART-14), wyścig o ostatnią sztukę zamiast usunięcia „Brak stanu”, kasa z dostawą w E-01; gałąź `feat/payu` w parze ze sklepem.
+40. **Daj testom własne dane wspólne dla sklepu** — `make_discount_code` z prefiksem `test-` i sprzątaniem po ID, tak jak własny produkt (ADR-017).
+41. **Przetestuj logikę pieniędzy na granicach** — rabat z połówką, kwota większa niż produkty, data końca „dziś” i „wczoraj” w strefie sklepu, suma dla każdej metody dostawy, kwota w groszach w powiadomieniu.
+42. **Zaloguj się do panelu tak jak operator, raz na proces** — formularz w przeglądarce, ciasteczko do testów API (ADR-017).
 
 ---
 
@@ -1030,6 +1062,19 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Odpowiedź:** porównuję porażkę ze specyfikacją zmiany. Jeśli spec opisuje nowe zachowanie, test był poprawny dla starej wersji i trzeba go dopasować; jeśli nie opisuje, to błąd i zgłaszam go twórcy. Dopasowanie nie może osłabić testu: dalej sprawdza to samo wymaganie, tylko w nowym scenariuszu.
 - **U mnie:** kasa w sklepie złamała 6 testów i wszystkie 6 wynikały ze specu. Koszyk przestał przyjmować ilość ponad stan, więc „Brak stanu” przy zamówieniu sprawdzam teraz scenariuszem „kto pierwszy, ten lepszy”: dwóch klientów ma w koszyku tę samą ostatnią sztukę, B zamawia pierwszy, potem A dostaje błąd, a baza nie ma jego zamówienia. To scenariusz po kolei, deterministyczny, a nie test dwóch zamówień w tej samej chwili (współbieżności). Najprościej byłoby usunąć to sprawdzenie, ale wtedy zamówienie ponad stan przestałoby być pilnowane.
 - **Dowód:** sekcja 2 („Kasa, krok 1”), `tests/api/test_orders.py` (A-ORD-05), `tests/db/test_orders_db.py` (D-ORD-05, D-ORD-06).
+
+### Jak testujesz logikę pieniędzy: rabaty, zaokrąglenia, sumy?
+- **Odpowiedź:** szukam granic, przy których błąd zmienia wynik o grosz albo złotówkę. Rabat procentowy dobieram tak, żeby wynik miał ,5 (25 zł × 10% = 2,5 → 3 zł), kod kwotowy większy niż produkty (rabat nie może zejść poniżej zera), podstawę z promocją i dopłatą, każdą metodę dostawy osobno, a w płatności kwotę w groszach (złote zamiast groszy muszą być odrzucone). Liczbę sprawdzam w bazie, bo tam jest suma, którą sklep wyśle do operatora płatności.
+- **Uwaga:** asercje sprawdzam mutacją: zmieniam na chwilę oczekiwaną wartość i patrzę, czy test pada z czytelną różnicą.
+- **Dowód:** `tests/api/test_discount.py` (A-DISC-02, A-DISC-03), `tests/db/test_checkout_db.py` (D-CHK-01), `tests/api/test_payments.py` (A-PAY-13).
+
+### Jak testy równoległe dzielą dane, które są wspólne dla całej aplikacji?
+- **Odpowiedź:** każdy test tworzy własny rekord z unikalnym prefiksem (`test-<hex>`) i usuwa go po ID, także po nieudanym teście. Asercje nie zakładają, że innych rekordów nie ma: kod na liście panelu szukam po ID, a nie sprawdzam długości listy. Dzięki temu cztery procesy naraz nie przeszkadzają sobie, a po przebiegu baza jest czysta (sprawdzam to zapytaniem).
+- **Dowód:** ADR-017, `src/jersa/fixtures/discounts.py`, `tests/api/test_admin_codes.py`.
+
+### Jak testujesz API, które wymaga logowania, gdy logowanie nie jest endpointem API?
+- **Odpowiedź:** w moim sklepie panel loguje się formularzem (akcja serwera Next.js), więc zwykłe żądanie HTTP nie wystarczy. Przeglądarka loguje się raz na proces tak jak operator, a fixture przenosi ciasteczko sesji do klienta `requests`. Nie liczę tokenu sam, bo test znałby wtedy wewnętrzny szczegół sklepu i padałby przy każdej jego zmianie.
+- **Dowód:** ADR-017, `src/jersa/fixtures/admin.py`.
 
 ---
 

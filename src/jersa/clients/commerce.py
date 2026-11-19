@@ -27,11 +27,37 @@ BUYER = {
     "postalCode": "90-001",
     "city": "Łódź",
 }
+# Metody dostawy kasy (Polska) i ich ceny w złotych, z listy sklepu.
+SHIPPING_METHODS = {"odbior-osobisty": 0, "poczta-polska": 14, "kurier-dpd": 15}
+
+
+def checkout_body(**overrides: object) -> dict[str, object]:
+    """Pełne poprawne pole `checkout` zamówienia: osoba prywatna z Polski, Kurier DPD,
+    regulamin zaakceptowany. Test nadpisuje tylko to, co sprawdza."""
+    body: dict[str, object] = {
+        **BUYER,
+        "email": EMAIL,
+        "buyerKind": "private",
+        "companyName": "",
+        "nip": "",
+        "country": "Polska",
+        "shipToDifferentAddress": False,
+        "shipStreet": "",
+        "shipPostalCode": "",
+        "shipCity": "",
+        "shipCountry": "",
+        "notes": "",
+        "termsAccepted": True,
+        "shippingMethodId": "kurier-dpd",
+    }
+    return {**body, **overrides}
+
 
 _CART = "/api/commerce/cart"
 _ORDERS = "/api/commerce/orders"
 _PAYU_START = "/api/commerce/payu/start"
 _PAYU_NOTIFY = "/api/commerce/payu/notify"
+_DISCOUNT = "/api/commerce/discount"
 _WISHLIST = "/api/commerce/wishlist"
 _REVIEWS = "/api/commerce/reviews"
 _SEARCH = "/api/commerce/search"
@@ -64,12 +90,25 @@ class CommerceApi:
         address = dict(SHIPPING) if shipping is None else shipping
         return self.client.post(_ORDERS, json={"email": email, "shipping": address})
 
+    def checkout_order(self, checkout: dict[str, object]) -> requests.Response:
+        """Zamówienie przez kasę (`/kasa`): pole `checkout` z danymi kupującej i dostawą."""
+        return self.client.post(_ORDERS, json={"checkout": checkout})
+
+    def apply_discount(self, code: str) -> requests.Response:
+        """Kod rabatowy na koszyku. Pusty kod zdejmuje rabat."""
+        return self.client.post(_DISCOUNT, json={"code": code})
+
     def start_payment(self, order_id: str) -> requests.Response:
         return self.client.post(_PAYU_START, json={"orderId": order_id})
 
-    def notify(self, order_id: str, status: str) -> requests.Response:
-        """Powiadomienie o płatności, takie jak wysyła operator płatności."""
+    def notify(
+        self, order_id: str, status: str, total_amount: str | None = None
+    ) -> requests.Response:
+        """Powiadomienie o płatności, takie jak wysyła operator płatności. `total_amount` to
+        kwota w groszach jako tekst (jak w PayU); bez niej sklep kwoty nie sprawdza."""
         body = {"orderId": order_id, "extOrderId": order_id, "status": status}
+        if total_amount is not None:
+            body["totalAmount"] = total_amount
         return self.client.post(_PAYU_NOTIFY, json=body)
 
     def wishlist(self) -> requests.Response:
