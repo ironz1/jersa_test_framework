@@ -2,11 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "cart.json",
   "title": "CartView: GET/POST/PATCH/DELETE /api/commerce/cart",
-  "description": "Spisane z odpowiedzi z 2026-11-13. customFit i sizeSurcharge mogą nie występować na starych liniach.",
+  "description": "Spisane z odpowiedzi z 2026-11-13. customFit i sizeSurcharge mogą nie występować na starych liniach. 2026-11-19: discountCode (pusty bez kodu) i discountAmount (0 bez kodu), kasa z feat/payu.",
   "type": "object",
   "required": [
     "id",
-    "lines"
+    "lines",
+    "discountCode",
+    "discountAmount"
   ],
   "properties": {
     "id": {
@@ -18,6 +20,13 @@
       "items": {
         "$ref": "#/$defs/line"
       }
+    },
+    "discountCode": {
+      "type": "string"
+    },
+    "discountAmount": {
+      "type": "integer",
+      "minimum": 0
     }
   },
   "additionalProperties": false,
