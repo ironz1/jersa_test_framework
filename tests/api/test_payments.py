@@ -2,6 +2,9 @@ from uuid import uuid4
 
 import pytest
 
+from jersa.clients.commerce import checkout_body
+from jersa.db.orders import get_order
+
 pytestmark = pytest.mark.regression
 
 
@@ -103,3 +106,33 @@ def test_canceled_after_completed_stays_paid(shop, placed_order):
         "ok": True,
         "redirectUrl": f"/zamowienie/{placed_order.public_token}?paid=1",
     }
+
+
+def _checkout_with_code(shop, make_product, make_discount_code):
+    """Zamówienie z kasy: produkt 200 zł, kod 10%, Kurier DPD, czyli suma 195 zł."""
+    own = make_product(amount=200)
+    assert shop.add_to_cart(own.slug, "36").status_code == 200
+    assert shop.apply_discount(make_discount_code(kind="percent", value=10).code).status_code == 200
+    response = shop.checkout_order(checkout_body(shippingMethodId="kurier-dpd"))
+    assert response.status_code == 200, response.text
+    return response.json()["order"]["id"]
+
+
+def test_notify_with_matching_amount_marks_paid(shop, db, make_product, make_discount_code):
+    """A-PAY-01: powiadomienie z kwotą w groszach równą sumie zamówienia (z rabatem i dostawą)
+    oznacza zamówienie jako opłacone."""
+    order_id = _checkout_with_code(shop, make_product, make_discount_code)
+    response = shop.notify(order_id, "COMPLETED", total_amount="19500")
+    assert response.status_code == 200, response.text
+    assert get_order(db, order_id)["status"] == "paid"
+
+
+@pytest.mark.parametrize("amount", ["19400", "195"], ids=["inna-kwota", "zlote-zamiast-groszy"])
+def test_notify_with_wrong_amount_is_rejected(shop, db, make_product, make_discount_code, amount):
+    """A-PAY-02: powiadomienie z kwotą inną niż suma zamówienia jest odrzucane; status bez
+    zmian."""
+    order_id = _checkout_with_code(shop, make_product, make_discount_code)
+    response = shop.notify(order_id, "COMPLETED", total_amount=amount)
+    assert response.status_code == 400
+    assert response.json() == {"error": "Kwota nie zgadza się z zamówieniem"}
+    assert get_order(db, order_id)["status"] == "awaiting_payment"
