@@ -51,3 +51,11 @@ def test_review_for_unknown_product_is_rejected(shop):
     response = shop.add_review("nie-ma-" + uuid4().hex, "Anna", "Leży świetnie.")
     assert response.status_code == 400
     assert response.json() == {"error": "Nie znaleziono produktu"}
+
+
+def test_review_for_hidden_product_is_rejected(shop, make_product):
+    """A-REV-07: opinia do ukrytego produktu jest odrzucana."""
+    hidden = make_product(hidden=True)
+    response = shop.add_review(hidden.slug, "Anna", "Leży świetnie.")
+    assert response.status_code == 400
+    assert response.json() == {"error": "Nie znaleziono produktu"}

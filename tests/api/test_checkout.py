@@ -4,6 +4,7 @@ import pytest
 
 from jersa.clients.commerce import checkout_body
 from jersa.db.discount_codes import set_code_active
+from jersa.db.products import set_hidden
 
 pytestmark = pytest.mark.regression
 
@@ -153,6 +154,21 @@ def test_checkout_accepts_phone_with_separators(shop, product, phone):
     response = shop.checkout_order(checkout_body(phone=phone))
     assert response.status_code == 200, response.text
     assert _cart(shop)["lines"] == []
+
+
+def test_product_hidden_after_adding_is_rejected(shop, product, db):
+    """A-CHK-12: zamówienie z produktem ukrytym po dodaniu do koszyka jest odrzucane;
+    pozycja zostaje w koszyku."""
+    assert shop.add_to_cart(product.slug).status_code == 200
+    set_hidden(db, product.slug, True)
+
+    response = shop.checkout_order(checkout_body())
+    assert response.status_code == 400
+    assert response.json() == {"error": "Produkt niedostępny"}
+    # Koszyk może pomijać ukryty produkt przy odczycie. Po ponownym pokazaniu produktu widać,
+    # czy pozycja naprawdę została.
+    set_hidden(db, product.slug, False)
+    assert [line["productSlug"] for line in _cart(shop)["lines"]] == [product.slug]
 
 
 def test_code_disabled_before_order_is_rejected(shop, product, make_discount_code, db):
