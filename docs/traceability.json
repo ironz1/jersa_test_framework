@@ -138,6 +138,8 @@
     {"id": "A-WISH-04", "level": "API", "reqs": ["R21"], "status": "zautomatyzowany", "title": "Usunięcie produktu z przechowalni", "tests": ["tests/api/test_wishlist.py::test_remove_from_wishlist"]},
     {"id": "A-WISH-05", "level": "API", "reqs": ["R13"], "status": "zautomatyzowany", "title": "Żądanie do przechowalni bez produktu jest odrzucane: „Brak produktu”", "tests": ["tests/api/test_wishlist.py::test_wishlist_without_product_is_rejected"]},
     {"id": "A-WISH-06", "level": "API", "reqs": ["R38", "R21", "R13"], "status": "zautomatyzowany", "title": "Dodanie do przechowalni produktu nieistniejącego albo ukrytego jest odrzucane", "tests": ["tests/api/test_wishlist.py::test_wish_for_unknown_or_hidden_product_is_rejected"]},
+    {"id": "A-JSON-01", "level": "API", "reqs": ["R13", "R23"], "status": "zautomatyzowany", "title": "Uszkodzony JSON w 9 endpointach (koszyk, zamówienie, start płatności, przechowalnia, opinie, kod) jest odrzucany: „Nieprawidłowe dane”", "tests": ["tests/api/test_malformed_json.py::test_malformed_json_is_rejected"]},
+    {"id": "A-JSON-02", "level": "API", "reqs": ["R13"], "status": "zautomatyzowany", "title": "Uszkodzone powiadomienie o płatności jest odrzucane: „Brak zamówienia”", "tests": ["tests/api/test_malformed_json.py::test_malformed_payment_notification_is_rejected"]},
 
     {"id": "A-SRCH-01", "level": "API", "reqs": ["R8"], "status": "zautomatyzowany", "title": "Wyszukiwanie po fragmencie nazwy", "tests": ["tests/api/test_search.py::test_search_by_name_fragment"]},
     {"id": "A-SRCH-02", "level": "API", "reqs": ["R8"], "status": "zautomatyzowany", "title": "Wyszukiwanie nie rozróżnia wielkości liter", "tests": ["tests/api/test_search.py::test_search_ignores_case"]},
