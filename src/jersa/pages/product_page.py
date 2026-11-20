@@ -44,5 +44,7 @@ class ProductPage:
                 "/api/commerce/wishlist" in response.url and response.request.method == "POST"
             )
         ) as saved:
-            self._page.get_by_role("button", name="Dodaj do ulubionych").click()
+            # Karty „Produkty powiązane” mają własne serduszka w linku do karty; serduszko
+            # tego produktu jest jedynym poza linkiem.
+            self._page.locator('button[aria-label="Dodaj do ulubionych"]:not(a button)').click()
         return saved.value

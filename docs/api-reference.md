@@ -239,21 +239,23 @@ Mock bez podpisu:
 
 ## Dane testowe (seed)
 
-- Źródło: `fixtures/catalog.json` + `scripts/seed-catalog.ts`.
-- Seed dopisuje brakujące slugi, **nie nadpisuje** edytowanych produktów. Opinie CASTELLO są upsert.
-- Stan startowy: **5 szt. na każdy dostępny rozmiar**. Seed jeszcze się zmieni, więc testy nie zakładają tej liczby (ADR-013).
-- Żaden produkt seeda nie ma procentu promocji (`promoPercent` = 0, także CASTELLO z flagą promocji). Cenę promocyjną testy sprawdzają na własnym produkcie (ADR-012).
+- Źródło na Postgresie (Docker, Vercel): `fixtures/catalog-live.json` (59 produktów z katalogu na żywo, razem z kopiami) i zdjęcia z `fixtures/seed-media`, wstawiane przez `scripts/seed-catalog.ts` w usłudze `db-init`.
+- Seed dopisuje brakujące slugi, **nie nadpisuje** istniejących produktów i niczego nie kasuje.
+- Pięciu produktów podglądu (`zakiet-castello`, `bluzka-greta`, `sukienka-mandy`, `suknia-mandisa`, `komplet-zakiet-bacan`) seed bazy **nie wstawia** (od 2026-11-20). Zostają w `fixtures/catalog.json` tylko dla MockCommerce.
+- Seed dalej wstawia wpis bloga `kombinezon-zamiast-sukienki` i dwie opinie CASTELLO (upsert): `rev-castello-1` Paulina „Elegancja i klasa.”, `rev-castello-2` Malwina „Idealny zestaw na komunię.” Opinie są, produktu `zakiet-castello` w bazie nie ma.
+- Stan startowy: zwykle **5 szt. na rozmiar**, ale katalog na żywo ma wyjątki. Testy nie zakładają tej liczby (ADR-013) i kupują tylko własny produkt (ADR-012).
+- Przykłady w sekcjach endpointów wyżej pochodzą z czasu seeda z produktami podglądu (`zakiet-castello`). Kształt odpowiedzi się nie zmienił.
 
-| slug | nazwa | cena | kategorie | MTM | new | promo | bestseller |
-|---|---|---|---|---|---|---|---|
-| `zakiet-castello` | Żakiet CASTELLO | 350 | zakiety-bolerka | tak | | tak | tak |
-| `bluzka-greta` | Bluzka GRETA | 390 | bluzki | | | | tak |
-| `sukienka-mandy` | Sukienka MANDY | 580 | sukienki | | | | tak |
-| `suknia-mandisa` | Suknia MANDISA | 690 | sukienki, suknie | tak | tak | | |
-| `komplet-zakiet-bacan` | Komplet żakiet BACAN | 1085 | komplety, komplety-damskie, zakiety-bolerka | | | | tak |
+**Produkt dowodowy testów** (stałe w `src/jersa/seed.py`, tylko do czytania):
 
-Rozmiary: CASTELLO 34–56 + XS–5XL; GRETA 34–40 + XS–L; MANDY / MANDISA / BACAN 34–40 + S–L.
+| slug | nazwa w bazie | cena | kategoria | MTM | rozmiary |
+|---|---|---|---|---|---|
+| `sukienka-stella` | `SUKIENKA  STELLA` (dwie spacje) | 460 | sukienki | tak | 34–44 |
 
-**Stabilny happy path** (jak w e2e sklepu): CASTELLO rozmiar 36, email `klientka@example.com`, adres z `checkout.spec.ts`.
+- Tę samą nazwę ma `sukienka-stella1`, więc wyszukiwanie `stella` zwraca dwa produkty. E2E wybiera wynik po slugu w adresie linku.
+- Nazwa dostępna linku ma spacje zliczone do jednej. Wzorce nazw w page objectach przyjmują dowolny odstęp (`jersa.pages.names.name_pattern`).
+- Healthcheck Dockera: `GET /api/commerce/search?q=stella` zawiera `sukienka-stella`.
+
+**Stabilny happy path:** własny produkt testu (`make_product`, rozmiar 36), e-mail `klientka@example.com`, adres i kupująca z `jersa.clients.commerce`.
 
 Landingi (wesele, nowosci, …) są w `catalog.json` i w `loadMeta()` OwnCommerce — nie w tabeli SQL.

@@ -1,12 +1,14 @@
 import pytest
 
+from jersa.seed import SEED_QUERY
+
 
 @pytest.mark.smoke
 @pytest.mark.regression
 @pytest.mark.contract
 def test_search_matches_contract(api_client, assert_matches_schema):
-    response = api_client.get("/api/commerce/search", params={"q": "castello"})
+    response = api_client.get("/api/commerce/search", params={"q": SEED_QUERY})
     assert response.status_code == 200
     body = response.json()
-    assert body["products"], "seed powinien zwrócić CASTELLO"
+    assert body["products"], "seed powinien zwrócić produkt dowodowy"
     assert_matches_schema(body, "search")

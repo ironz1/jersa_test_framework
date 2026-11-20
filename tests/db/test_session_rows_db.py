@@ -3,6 +3,7 @@
 import pytest
 
 from jersa.db.sessions import delete_session_rows
+from jersa.seed import SEED_SLUG
 
 pytestmark = pytest.mark.regression
 
@@ -15,7 +16,7 @@ def _count(db, table, row_id):
 
 def test_session_rows_are_found_by_cookie_and_deleted(db, shop, product):
     assert shop.add_to_cart(product.slug).status_code == 200
-    assert shop.add_wish("zakiet-castello").status_code == 200
+    assert shop.add_wish(SEED_SLUG).status_code == 200
     cart_id = shop.client.cookies.get("jersa_cart")
     wish_id = shop.client.cookies.get("jersa_wish")
     assert cart_id

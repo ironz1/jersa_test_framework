@@ -275,6 +275,21 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 **Projekt:** [`docs/superpowers/specs/2026-11-19-etap-3-krok-b-design.md`](docs/superpowers/specs/2026-11-19-etap-3-krok-b-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-20-etap-3-krok-b.md`](docs/superpowers/plans/2026-11-20-etap-3-krok-b.md) · **ADR:** 014
 
+### Seed bez produktów podglądu — 2026-11-20
+
+**Co powstało**
+- Gałąź `feat/seed-live-catalog` w parze z gałęzią sklepu: seed bazy nie wstawia już pięciu produktów podglądu (`zakiet-castello` i cztery inne), tylko 59 produktów z katalogu na żywo. Testy czytające seed (D-01, A-SRCH-01…03, A-WISH-01…04, K-04, K-01, E-02, E-03, E-04, smoke strony produktu) i healthcheck Dockera przeszły na `sukienka-stella`.
+- Framework: `src/jersa/seed.py` (slug, nazwa, fraza i fragment sluga produktu dowodowego w jednym miejscu) i `src/jersa/pages/names.py` (wzorzec nazwy odporny na odstępy).
+
+**Wyniki**
+- Sklep z drzewa roboczego gałęzi na pustej bazie: stary healthcheck pada (wyszukiwarka „castello” zwraca pustą listę), nowy przechodzi. Na samej gałęzi sklepu pada 39 testów kroku B, bo gałąź odeszła od `main` przed poprawką walidacji; agent sklepu ma wciągnąć `main`. Ta sama kopia z nałożoną poprawką: 287 passed dwa razy z rzędu.
+
+**Czego się nauczyłem**
+- Prawdziwe dane mają pułapki, których nie ma w danych pokazowych: dwa produkty o tej samej nazwie, podwójna spacja w nazwie, polecane produkty z własnym serduszkiem na stronie produktu. Lokator po samej nazwie przestaje wskazywać jeden element.
+- Bramka na PR-ze uruchamia testy z gałęzi o tej samej nazwie, a ta odchodzi od `main` repo testów. Gałąź sklepu musi więc mieć wszystko, co `main` sklepu, inaczej pada na testach zmian, których nie dotyka.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-20-seed-live-catalog-design.md`](docs/superpowers/specs/2026-11-20-seed-live-catalog-design.md)
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -334,7 +349,7 @@ Rozrysowane: [`docs/mapa-srodowiska.pdf`](docs/mapa-srodowiska.pdf).
 | Co sprawdza | czy kod sklepu działa | czy działa wdrożona wersja |
 | Kiedy | codziennie + CI na push | nightly regression + smoke po deployu |
 
-**Jeden przebieg:** `docker compose up` (Postgres → `db-init`: schemat + seed → sklep) → healthcheck (`/api/commerce/search?q=castello` zwraca CASTELLO) → `pytest` → `docker compose down -v` (wszystko znika).
+**Jeden przebieg:** `docker compose up` (Postgres → `db-init`: schemat + seed → sklep) → healthcheck (`/api/commerce/search?q=stella` zwraca `sukienka-stella`) → `pytest` → `docker compose down -v` (wszystko znika).
 
 **Docker ≠ CI.** Docker odpowiada na pytanie *jak* postawić środowisko; CI (GitHub Actions) — *kiedy* i *co* uruchomić. CI używa Dockera jako narzędzia i powtarza te same komendy co lokalnie, dlatego Etap 1 (Docker) jest przed Etapem 5 (CI).
 
@@ -728,6 +743,13 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Jak zapobiec:** przed ogłoszeniem przyspieszenia zmierzyć czas z równoległością i bez niej, osobno dla każdego poziomu.
 - **Na rozmowie:** Zmierzyłem czas na jednym i na czterech procesach i przy 150 krótkich testach różnicy nie było, bo start procesów zjadał zysk. Dlatego równoległość traktuję najpierw jako sprawdzian niezależności testów, a dopiero potem jako przyspieszenie.
 
+
+### Lokatory po nazwie trafiają w dwa elementy po zmianie seeda (2026-11-20)
+- **Objaw:** E-04 pada „strict mode violation”: dwa przyciski „Dodaj do ulubionych” na stronie `sukienka-stella`. Wyszukiwanie „stella” zwraca dwa wyniki o tej samej nazwie.
+- **Przyczyna:** nowy seed to katalog na żywo: `sukienka-stella1` ma tę samą nazwę „SUKIENKA  STELLA” i jest w „Produktach powiązanych” z własnym serduszkiem. Do tego nazwa ma dwie spacje, a nazwa dostępna linku ma je zliczone do jednej.
+- **Rozwiązanie:** wynik wyszukiwania po dokładnym adresie `/produkt/<slug>` i nazwie; serduszko produktu jako jedyne poza linkiem karty; wzorzec nazwy przyjmuje dowolny odstęp (`name_pattern`). Sprawdzone sondą DOM przed zmianą lokatorów.
+- **Jak zapobiec:** element, który ma być jeden, wskazywać po czymś unikalnym (slug, adres, obszar strony), nie po tekście, który powtarza się w danych.
+- **Na rozmowie:** Po zmianie danych startowych dwa produkty miały tę samą nazwę i test kliknięcia trafiał w dwa elementy. Zmieniłem lokator na adres produktu, bo nazwa nie jest unikalna, a slug jest.
 ---
 
 ## 7. Zarządzanie frameworkiem
@@ -834,6 +856,7 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 41. **Przetestuj logikę pieniędzy na granicach** — rabat z połówką, kwota większa niż produkty, data końca „dziś” i „wczoraj” w strefie sklepu, suma dla każdej metody dostawy, kwota w groszach w powiadomieniu.
 42. **Zaloguj się do panelu tak jak operator, raz na proces** — formularz w przeglądarce, ciasteczko do testów API (ADR-017).
 43. **Dopisz testy walidacji wejścia dopiero po poprawce sklepu** — ilość, produkt, rozmiar, format danych, ukryty produkt, uszkodzony JSON; bramka pilnuje ich od teraz na każdym PR-ze sklepu (ADR-014).
+44. **Trzymaj założenia o seedzie w jednym pliku** — seed sklepu przestał wstawiać produkty podglądu; testy czytające seed i healthcheck przeszły na `sukienka-stella` ze stałych w `src/jersa/seed.py`.
 
 ---
 
@@ -1098,6 +1121,11 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Uwaga:** dla poprawnych wariantów też jest test (telefon z +48, spacjami i myślnikami), żeby walidacja nie odrzucała dobrych danych.
 - **Dowód:** `tests/api/test_cart.py` (A-CART-15, A-CART-16), `tests/db/test_orders_db.py` (D-ORD-08), `tests/api/test_malformed_json.py`.
 
+### Dane startowe aplikacji się zmieniły i połowa testów pada. Co robisz?
+- **Odpowiedź:** najpierw sprawdzam, które testy w ogóle polegają na seedzie. U mnie są to tylko testy „seed przeszedł”: wyszukiwarka, strona produktu, przechowalnia i healthcheck. Testy zamówień i opinii tworzą własny produkt, więc zmiana seeda ich nie dotyka. Założenia o seedzie (slug, nazwa, fraza) trzymam w jednym pliku, więc przy zmianie poprawiam jedno miejsce i sprawdzam całość na pustej bazie.
+- **Uwaga:** nowe dane mają swoje pułapki: dwa produkty o tej samej nazwie i podwójna spacja w nazwie. E2E wybiera więc wynik po slugu, a wzorzec nazwy przyjmuje dowolny odstęp.
+- **Dowód:** `src/jersa/seed.py`, `src/jersa/pages/names.py`, ADR-012.
+
 ---
 
 ## 10. Słownik pojęć
@@ -1112,8 +1140,8 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 
 ### Seed (dane startowe)
 - **Definicja:** skrypt lub plik, który wypełnia pustą bazę znanym, przewidywalnym zestawem danych startowych.
-- **U mnie:** `fixtures/catalog.json` + `scripts/seed-catalog.ts` w sklepie → 5 produktów, 5 szt. na każdy rozmiar, 2 opinie CASTELLO. Uruchamiany przez `prepare-database.mjs` w usłudze `db-init`.
-- **Dlaczego jest ważny:** testy potrzebują punktu wyjścia, który zawsze wygląda tak samo. Dzięki seedowi wiadomo, że CASTELLO kosztuje 350 zł i ma rozmiar 36 — test może na tym polegać bez tworzenia produktu.
+- **U mnie:** `scripts/seed-catalog.ts` w sklepie wstawia na Postgresie 59 produktów z katalogu na żywo (`fixtures/catalog-live.json`) ze zdjęciami i 2 opinie CASTELLO. Do 2026-11-20 było to 5 produktów podglądu z `fixtures/catalog.json`. Uruchamiany przez `prepare-database.mjs` w usłudze `db-init`.
+- **Dlaczego jest ważny:** testy potrzebują punktu wyjścia, który zawsze wygląda tak samo. Testy sprawdzające, że seed przeszedł (wyszukiwarka, strona produktu), czytają jeden produkt dowodowy, `sukienka-stella`; jego slug i nazwa są w jednym pliku, `src/jersa/seed.py`. Kupują tylko własny produkt (ADR-012), więc zmiana seeda nie psuje testów zamówień.
 - **Seed vs dane tworzone przez test:**
 
   | | Seed | Dane testu |
