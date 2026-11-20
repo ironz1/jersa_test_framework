@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-19",
+  "updated": "2026-11-20",
   "requirements": [
     {"id": "R1", "source": "właściciel sklepu, 2026-11-12", "text": "Szycie na miarę kosztuje +100 zł do ceny produktu. Nie ma wtedy dopłaty za rozmiar, a stan magazynowy się nie zmienia."},
     {"id": "R2", "source": "właściciel sklepu, 2026-11-12", "text": "Dopłata za rozmiar dotyczy tylko rozmiarów 50, 52, 54, 3XL, 4XL i 5XL. Kwoty ustawia admin, domyślnie 0.", "note": "Poza zakresem Etapu 3: dopłatę ustawia się w panelu admina. Sprawdzana jest tylko wartość domyślna 0 (A-CART-07)."},
@@ -34,7 +34,11 @@
     {"id": "R31", "source": "spec kasy sklepu, 2026-11-17, rozdział 3", "text": "Przy złożeniu zamówienia sklep sprawdza kod jeszcze raz. Kod, który przestał działać, nie tworzy zamówienia: kod schodzi z koszyka, produkty zostają."},
     {"id": "R32", "source": "spec kasy sklepu, 2026-11-17, rozdziały 4, 5", "text": "Zamówienie zapisuje odpis kasy (kupująca, firma, adres rozliczeniowy, uwagi, regulamin, dostawa, kod i rabat) i adres wysyłki (drugi adres albo adres z formularza). Późniejsza zmiana kodu nie zmienia odpisu ani sumy."},
     {"id": "R33", "source": "spec kasy sklepu, 2026-11-17, rozdział 6", "text": "Powiadomienie o płatności z kwotą w groszach równą sumie zamówienia oznacza je jako opłacone; inna kwota jest odrzucana, status się nie zmienia."},
-    {"id": "R34", "source": "spec kasy sklepu, 2026-11-17, rozdział 5", "text": "Panelem kodów rabatowych posługuje się tylko zalogowany admin: tworzy kod procentowy albo kwotowy, z datą końca albo bez, i może go wyłączyć. Panel odrzuca pusty kod, zły rodzaj, wartość poniżej 1, procent ponad 100, złą datę i duplikat bez względu na wielkość liter."}
+    {"id": "R34", "source": "spec kasy sklepu, 2026-11-17, rozdział 5", "text": "Panelem kodów rabatowych posługuje się tylko zalogowany admin: tworzy kod procentowy albo kwotowy, z datą końca albo bez, i może go wyłączyć. Panel odrzuca pusty kod, zły rodzaj, wartość poniżej 1, procent ponad 100, złą datę i duplikat bez względu na wielkość liter."},
+    {"id": "R35", "source": "właściciel sklepu, 2026-11-12/13", "text": "Ilość w koszyku to liczba całkowita: przy dodaniu co najmniej 1, przy zmianie co najmniej 0 (0 usuwa pozycję). Inna ilość jest odrzucana: „Nieprawidłowa ilość”, koszyk bez zmian."},
+    {"id": "R36", "source": "właściciel sklepu, 2026-11-12/13", "text": "Koszyk przyjmuje tylko widoczny produkt sklepu i rozmiar z jego listy. Szycie na miarę tylko dla produktu, który je oferuje, i tylko z rozmiarem „made-to-measure”. Zmiana nieznanej pozycji jest odrzucana; usunięcie nieznanej pozycji nic nie zmienia."},
+    {"id": "R37", "source": "właściciel sklepu, 2026-11-12/13", "text": "Zamówienie (oba kształty: stary i kasa) wymaga e-maila w formacie nazwa@domena.pl, kodu pocztowego 00-000 (także drugiego adresu) i telefonu z 9 cyfr; spacje, myślniki i +48 są dozwolone."},
+    {"id": "R38", "source": "właściciel sklepu, 2026-11-12/13", "text": "Ukryty produkt nie jest do kupienia, do opinii ani do przechowalni. Zamówienie z produktem ukrytym po dodaniu do koszyka jest odrzucane: „Produkt niedostępny”; koszyk i stan bez zmian, brak zamówienia."}
   ],
   "cases": [
     {"id": "K-01", "level": "Kontrakt", "smoke": true, "reqs": ["R23"], "status": "zautomatyzowany", "title": "Wynik wyszukiwania zgodny ze schematem", "tests": ["tests/contract/test_search_contract.py::test_search_matches_contract"]},

@@ -97,13 +97,21 @@ def lines_pattern(slug: str) -> str:
     return f'%"productSlug":"{slug}"%'
 
 
-def delete_product(conn: psycopg.Connection, slug: str) -> None:
-    """Usuwa własny produkt razem z jego zamówieniami i opiniami.
-
-    Odmawia dla sluga bez prefiksu `test-`, żeby pomyłka w teście nie skasowała danych seeda.
-    """
+def _require_own(slug: str, action: str) -> None:
+    """Odmawia zmiany produktu bez prefiksu `test-`: pomyłka w teście nie ruszy danych seeda."""
     if not slug.startswith(OWN_PREFIX):
-        raise ValueError(f"Odmowa usunięcia: '{slug}' nie jest produktem testu ({OWN_PREFIX}…)")
+        raise ValueError(f"Odmowa {action}: '{slug}' nie jest produktem testu ({OWN_PREFIX}…)")
+
+
+def set_hidden(conn: psycopg.Connection, slug: str, hidden: bool) -> None:
+    """Ukrywa albo pokazuje własny produkt w sklepie (kolumna `hidden`)."""
+    _require_own(slug, "ukrycia")
+    conn.execute('UPDATE "ProductRow" SET hidden = %s WHERE slug = %s', (hidden, slug))
+
+
+def delete_product(conn: psycopg.Connection, slug: str) -> None:
+    """Usuwa własny produkt razem z jego zamówieniami i opiniami (tylko produkt testu)."""
+    _require_own(slug, "usunięcia")
     conn.execute('DELETE FROM "OrderRow" WHERE "linesJson" LIKE %s', (lines_pattern(slug),))
     conn.execute('DELETE FROM "ReviewRow" WHERE "productSlug" = %s', (slug,))
     conn.execute('DELETE FROM "ProductRow" WHERE slug = %s', (slug,))
