@@ -262,11 +262,11 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 ### Etap 3, krok B — 2026-11-19 → 2026-11-20
 
 **Co powstało**
-- 46 nowych testów sklepu (licząc parametryzacje) dla walidacji wejścia w `/api/commerce/*`: ilość w koszyku, produkt i rozmiar, szycie na miarę, nieznana pozycja (A-CART-15…20), format e-maila, kodu pocztowego i telefonu w obu kształtach zamówienia (A-ORD-07, A-ORD-08, A-CHK-09…11), ukryty produkt w kasie, bazie, opiniach i przechowalni (A-CHK-12, D-ORD-08, A-REV-07, A-WISH-06), uszkodzony JSON na 10 endpointach (A-JSON-01, A-JSON-02). Wymagania R35–R38.
+- 47 nowych testów sklepu (licząc parametryzacje) dla walidacji wejścia w `/api/commerce/*`: ilość w koszyku, produkt i rozmiar, szycie na miarę, nieznana pozycja (A-CART-15…20), format e-maila, kodu pocztowego i telefonu w obu kształtach zamówienia (A-ORD-07, A-ORD-08, A-CHK-09…11), ukryty produkt w kasie, bazie, opiniach i przechowalni (A-CHK-12, D-ORD-08, A-REV-07, A-WISH-06), uszkodzony JSON na 10 endpointach (A-JSON-01, A-JSON-02). Wymagania R35–R38.
 - Framework: `set_hidden(conn, slug, hidden)` z tą samą odmową dla sluga spoza `test-` co przy usuwaniu.
 
 **Wyniki**
-- Pełny przebieg: 284 passed (202 testy sklepu, 82 frameworka), ok. 21 s na 4 procesach.
+- Pełny przebieg: 285 passed (203 testy sklepu, 82 frameworka), ok. 16 s na 4 procesach.
 - Testy powstały dopiero po poprawce w sklepie (ADR-014): wcześniej opisałem zachowania agentowi sklepu, a po poprawce sprawdziłem je sondą i dopiero wtedy napisałem testy. Każdą grupę sprawdziłem mutacją: zepsuty oczekiwany komunikat albo stan dał czerwony test.
 
 **Czego się nauczyłem**
