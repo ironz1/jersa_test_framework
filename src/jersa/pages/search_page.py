@@ -1,9 +1,10 @@
 """Wyniki wyszukiwania: `/szukaj?q=<fraza>`."""
 
-import re
 from urllib.parse import quote
 
 from playwright.sync_api import Locator, Page
+
+from jersa.pages.names import name_pattern
 
 
 class SearchPage:
@@ -13,5 +14,7 @@ class SearchPage:
     def open(self, query: str) -> None:
         self._page.goto(f"/szukaj?q={quote(query)}")
 
-    def result(self, name: str) -> Locator:
-        return self._page.get_by_role("link", name=re.compile(re.escape(name)))
+    def result(self, slug: str, name: str) -> Locator:
+        """Link do wyniku po dokładnym adresie produktu. Sama nazwa nie wystarcza: dwa produkty
+        mogą mieć tę samą (`sukienka-stella` i `sukienka-stella1`)."""
+        return self._page.locator(f'a[href="/produkt/{slug}"]').filter(has_text=name_pattern(name))

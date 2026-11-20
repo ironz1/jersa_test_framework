@@ -2,9 +2,9 @@ from uuid import uuid4
 
 import pytest
 
-pytestmark = pytest.mark.regression
+from jersa.seed import SEED_SLUG
 
-SEED_PRODUCT = "zakiet-castello"
+pytestmark = pytest.mark.regression
 
 
 def test_new_customer_has_empty_wishlist(shop):
@@ -17,25 +17,25 @@ def test_new_customer_has_empty_wishlist(shop):
 
 def test_add_to_wishlist(shop):
     """A-WISH-02: dodanie produktu do przechowalni."""
-    response = shop.add_wish(SEED_PRODUCT)
+    response = shop.add_wish(SEED_SLUG)
     assert response.status_code == 200
     body = response.json()
-    assert body["slugs"] == [SEED_PRODUCT]
-    assert [product["slug"] for product in body["products"]] == [SEED_PRODUCT]
+    assert body["slugs"] == [SEED_SLUG]
+    assert [product["slug"] for product in body["products"]] == [SEED_SLUG]
 
 
 def test_add_same_product_twice_keeps_one_entry(shop):
     """A-WISH-03: ten sam produkt dodany dwa razy daje jeden wpis."""
-    shop.add_wish(SEED_PRODUCT)
-    response = shop.add_wish(SEED_PRODUCT)
+    shop.add_wish(SEED_SLUG)
+    response = shop.add_wish(SEED_SLUG)
     assert response.status_code == 200
-    assert response.json()["slugs"] == [SEED_PRODUCT]
+    assert response.json()["slugs"] == [SEED_SLUG]
 
 
 def test_remove_from_wishlist(shop):
     """A-WISH-04: usunięcie produktu z przechowalni."""
-    shop.add_wish(SEED_PRODUCT)
-    response = shop.remove_wish(SEED_PRODUCT)
+    shop.add_wish(SEED_SLUG)
+    response = shop.remove_wish(SEED_SLUG)
     assert response.status_code == 200
     assert response.json() == {"slugs": [], "products": []}
     assert shop.wishlist().json() == {"slugs": [], "products": []}

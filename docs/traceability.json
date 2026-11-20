@@ -147,7 +147,7 @@
     {"id": "A-SRCH-04", "level": "API", "reqs": ["R8"], "status": "zautomatyzowany", "title": "Puste zapytanie daje pustą listę", "tests": ["tests/api/test_search.py::test_empty_query_returns_nothing"]},
     {"id": "A-SRCH-05", "level": "API", "reqs": ["R8"], "status": "zautomatyzowany", "title": "Zapytanie bez trafień daje pustą listę", "tests": ["tests/api/test_search.py::test_query_without_matches_returns_nothing"]},
 
-    {"id": "D-01", "level": "Baza", "smoke": true, "reqs": ["R14"], "status": "zautomatyzowany", "title": "Seed zawiera produkt CASTELLO", "tests": ["tests/db/test_seed_smoke.py::test_seed_contains_castello"]},
+    {"id": "D-01", "level": "Baza", "smoke": true, "reqs": ["R14"], "status": "zautomatyzowany", "title": "Seed zawiera produkt dowodowy (sukienka-stella)", "tests": ["tests/db/test_seed_smoke.py::test_seed_contains_proof_product"]},
     {"id": "D-ORD-01", "level": "Baza", "reqs": ["R22", "R4"], "status": "zautomatyzowany", "title": "Wiersz zamówienia: e-mail, adres, pozycje, suma, status „oczekuje na płatność”, termin 30 minut", "tests": ["tests/db/test_orders_db.py::test_order_row_matches_request"]},
     {"id": "D-ORD-02", "level": "Baza", "reqs": ["R3"], "status": "zautomatyzowany", "title": "Zamówienie 2 sztuk zmniejsza stan rozmiaru o 2", "tests": ["tests/db/test_orders_db.py::test_order_reserves_stock"]},
     {"id": "D-ORD-03", "level": "Baza", "reqs": ["R1"], "status": "zautomatyzowany", "title": "Zamówienie na miarę: suma = cena + 100 zł, stan bez zmian", "tests": ["tests/db/test_orders_db.py::test_made_to_measure_order_keeps_stock"]},
