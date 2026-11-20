@@ -41,7 +41,7 @@ Każdy etap: co zrobiłem → czego się nauczyłem → linki do ADR / praktyk.
 - [x] **Etap 0 — Przygotowanie (~0,5 dnia):** przełączanie Prismy SQLite ↔ Postgres, lista endpointów i przykładowych odpowiedzi, seed danych
 - [x] **Etap 1 — Sklep w Dockerze (1–2 dni):** Dockerfile multi-stage (standalone), docker-compose: app + postgres, healthchecki, migracje i seed
 - [x] **Etap 2 — Szkielet repo testów (~1 dzień):** struktura, `conftest.py` (base_url, api_client, db_conn, page, assert_matches_schema), markery, ruff
-- [x] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E. **Krok A zrobiony 2026-11-13:** 83 testy sklepu dla zachowań, które sklep ma poprawnie. **Krok B** (kolejne testy API) wydzielony poza etap: czeka na zmianę w sklepie i wróci jako osobna praca
+- [x] **Etap 3 — Warstwy testów (3–5 dni):** kontrakt, API, DB, E2E. **Krok A zrobiony 2026-11-13:** 83 testy sklepu dla zachowań, które sklep ma poprawnie. **Krok B** (kolejne testy API) wydzielony poza etap, bo czekał na zmianę w sklepie; **zrobiony 2026-11-20** (zob. „Etap 3, krok B” niżej)
 - [x] **Etap 4 — Równoległość (~1 dzień), 2026-11-16:** pytest-xdist, `-n 4` domyślnie (ADR-015). Własne dane testu i sprzątanie po ID zrobione już w Etapie 3 (ADR-012)
 - [ ] **Etap 5 — CI (1–2 dni): 5A zrobione 2026-11-17 (bramka na PR sklepu, informacyjna na darmowym planie, ADR-016); zostaje 5B.** Bramka na PR sklepu (główny trigger), push/PR w repo testów, nightly regression, smoke po deployu, raporty i trace jako artefakty — patrz ADR-005
 - [ ] **Etap 6 — AWS (3–5 dni, osobno):** budżet i alerty, ECR (OIDC), RDS, App Runner + VPC connector
@@ -258,6 +258,22 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - Logowanie akcją serwera Next.js nie przejdzie zwykłym żądaniem HTTP. Przeglądarka loguje się raz na proces, a testy API dostają gotowe ciasteczko.
 
 **Projekt:** [`docs/superpowers/specs/2026-11-19-kasa-krok-2-design.md`](docs/superpowers/specs/2026-11-19-kasa-krok-2-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-19-kasa-krok-2.md`](docs/superpowers/plans/2026-11-19-kasa-krok-2.md) · **ADR:** 017
+
+### Etap 3, krok B — 2026-11-19 → 2026-11-20
+
+**Co powstało**
+- 47 nowych testów sklepu (licząc parametryzacje) dla walidacji wejścia w `/api/commerce/*`: ilość w koszyku, produkt i rozmiar, szycie na miarę, nieznana pozycja (A-CART-15…20), format e-maila, kodu pocztowego i telefonu w obu kształtach zamówienia (A-ORD-07, A-ORD-08, A-CHK-09…11), ukryty produkt w kasie, bazie, opiniach i przechowalni (A-CHK-12, D-ORD-08, A-REV-07, A-WISH-06), uszkodzony JSON na 10 endpointach (A-JSON-01, A-JSON-02). Wymagania R35–R38.
+- Framework: `set_hidden(conn, slug, hidden)` z tą samą odmową dla sluga spoza `test-` co przy usuwaniu.
+
+**Wyniki**
+- Pełny przebieg: 285 passed (203 testy sklepu, 82 frameworka), ok. 16 s na 4 procesach.
+- Testy powstały dopiero po poprawce w sklepie (ADR-014): wcześniej opisałem zachowania agentowi sklepu, a po poprawce sprawdziłem je sondą i dopiero wtedy napisałem testy. Każdą grupę sprawdziłem mutacją: zepsuty oczekiwany komunikat albo stan dał czerwony test.
+
+**Czego się nauczyłem**
+- Odrzucone żądanie trzeba sprawdzić dwa razy: status z komunikatem i stan po nim (koszyk, stan magazynowy, brak zamówienia w bazie). Sam status 400 nie mówi, czy sklep czegoś po drodze nie zapisał.
+- Endpoint, który czyta surową treść (powiadomienie o płatności, bo liczy jej podpis), odpowiada na uszkodzony JSON inaczej niż reszta. Test zapisuje to wprost, zamiast udawać, że wszystkie endpointy są takie same.
+
+**Projekt:** [`docs/superpowers/specs/2026-11-19-etap-3-krok-b-design.md`](docs/superpowers/specs/2026-11-19-etap-3-krok-b-design.md) · **Plan:** [`docs/superpowers/plans/2026-11-20-etap-3-krok-b.md`](docs/superpowers/plans/2026-11-20-etap-3-krok-b.md) · **ADR:** 014
 
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
@@ -817,6 +833,7 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 40. **Daj testom własne dane wspólne dla sklepu** — `make_discount_code` z prefiksem `test-` i sprzątaniem po ID, tak jak własny produkt (ADR-017).
 41. **Przetestuj logikę pieniędzy na granicach** — rabat z połówką, kwota większa niż produkty, data końca „dziś” i „wczoraj” w strefie sklepu, suma dla każdej metody dostawy, kwota w groszach w powiadomieniu.
 42. **Zaloguj się do panelu tak jak operator, raz na proces** — formularz w przeglądarce, ciasteczko do testów API (ADR-017).
+43. **Dopisz testy walidacji wejścia dopiero po poprawce sklepu** — ilość, produkt, rozmiar, format danych, ukryty produkt, uszkodzony JSON; bramka pilnuje ich od teraz na każdym PR-ze sklepu (ADR-014).
 
 ---
 
@@ -1075,6 +1092,11 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 ### Jak testujesz API, które wymaga logowania, gdy logowanie nie jest endpointem API?
 - **Odpowiedź:** w moim sklepie panel loguje się formularzem (akcja serwera Next.js), więc zwykłe żądanie HTTP nie wystarczy. Przeglądarka loguje się raz na proces tak jak operator, a fixture przenosi ciasteczko sesji do klienta `requests`. Nie liczę tokenu sam, bo test znałby wtedy wewnętrzny szczegół sklepu i padałby przy każdej jego zmianie.
 - **Dowód:** ADR-017, `src/jersa/fixtures/admin.py`.
+
+### Jak testujesz walidację wejścia w API?
+- **Odpowiedź:** dzielę wejście na klasy i biorę wartości z granic. Dla ilości w koszyku to -1, 0, 1 i 1,5 oraz tekst: dodanie wymaga co najmniej 1, a zmiana przyjmuje 0, bo 0 usuwa pozycję. Do tego zły typ, brak pola i uszkodzony JSON. Po każdym odrzuceniu sprawdzam nie tylko status i komunikat, ale też to, że nic się nie zmieniło: koszyk, stan magazynowy i brak zamówienia w bazie.
+- **Uwaga:** dla poprawnych wariantów też jest test (telefon z +48, spacjami i myślnikami), żeby walidacja nie odrzucała dobrych danych.
+- **Dowód:** `tests/api/test_cart.py` (A-CART-15, A-CART-16), `tests/db/test_orders_db.py` (D-ORD-08), `tests/api/test_malformed_json.py`.
 
 ---
 

@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 
 from jersa.clients.commerce import MADE_TO_MEASURE
@@ -148,3 +150,64 @@ def test_made_to_measure_has_no_stock_limit(shop, make_product):
     tailored = make_product(stock={"36": 0}, made_to_measure=True)
     lines = _lines(shop.add_to_cart(tailored.slug, MADE_TO_MEASURE, quantity=3, custom_fit=True))
     assert [line["quantity"] for line in lines] == [3]
+
+
+def _rejected(response, error):
+    assert response.status_code == 400
+    assert response.json() == {"error": error}
+
+
+@pytest.mark.parametrize("quantity", [-1, 0, 1.5, "abc"], ids=["minus", "zero", "ulamek", "tekst"])
+def test_add_with_invalid_quantity_is_rejected(shop, product, quantity):
+    """A-CART-15: dodanie z ilością, która nie jest liczbą całkowitą co najmniej 1, jest
+    odrzucane; koszyk bez zmian."""
+    body = {"productSlug": product.slug, "size": "36", "quantity": quantity}
+    _rejected(shop.client.post(CART, json=body), "Nieprawidłowa ilość")
+    assert _lines(shop.cart()) == []
+
+
+@pytest.mark.parametrize("quantity", [-1, 1.5, "abc"], ids=["minus", "ulamek", "tekst"])
+def test_change_to_invalid_quantity_is_rejected(shop, product, quantity):
+    """A-CART-16: zmiana na ilość ujemną, ułamkową albo tekst jest odrzucana; ilość zostaje."""
+    line_id = _lines(shop.add_to_cart(product.slug))[0]["id"]
+    body = {"lineId": line_id, "quantity": quantity}
+    _rejected(shop.client.patch(CART, json=body), "Nieprawidłowa ilość")
+    assert [line["quantity"] for line in _lines(shop.cart())] == [1]
+
+
+@pytest.mark.parametrize("kind", ["nieistniejacy", "ukryty"])
+def test_add_unknown_or_hidden_product_is_rejected(shop, make_product, kind):
+    """A-CART-17: dodanie produktu, którego nie ma albo który jest ukryty, jest odrzucane."""
+    if kind == "ukryty":
+        slug = make_product(hidden=True).slug
+    else:
+        slug = "test-nie-ma-" + uuid4().hex[:8]
+    _rejected(shop.add_to_cart(slug), "Nie znaleziono produktu")
+    assert _lines(shop.cart()) == []
+
+
+def test_add_with_size_outside_product_is_rejected(shop, product):
+    """A-CART-18: rozmiar spoza listy produktu jest odrzucany."""
+    _rejected(shop.add_to_cart(product.slug, "99"), "Nieprawidłowy rozmiar")
+    assert _lines(shop.cart()) == []
+
+
+def test_invalid_made_to_measure_is_rejected(shop, product, make_product):
+    """A-CART-19: szycie na miarę produktu, który go nie oferuje, i szycie na miarę ze zwykłym
+    rozmiarem są odrzucane."""
+    standard = make_product(made_to_measure=False)
+    _rejected(
+        shop.add_to_cart(standard.slug, MADE_TO_MEASURE, custom_fit=True),
+        "Produkt nie jest dostępny na miarę",
+    )
+    _rejected(shop.add_to_cart(product.slug, "36", custom_fit=True), "Nieprawidłowy rozmiar")
+    assert _lines(shop.cart()) == []
+
+
+def test_change_unknown_line_is_rejected(shop, product):
+    """A-CART-20: zmiana ilości nieznanej pozycji jest odrzucana; usunięcie nieznanej pozycji
+    niczego nie zmienia."""
+    before = _lines(shop.add_to_cart(product.slug))
+    _rejected(shop.set_quantity("nie-ma", 2), "Nie znaleziono pozycji")
+    assert _lines(shop.remove_line("nie-ma")) == before
+    assert _lines(shop.cart()) == before

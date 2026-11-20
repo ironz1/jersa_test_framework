@@ -4,6 +4,7 @@ import pytest
 
 from jersa.clients.commerce import checkout_body
 from jersa.db.discount_codes import set_code_active
+from jersa.db.products import set_hidden
 
 pytestmark = pytest.mark.regression
 
@@ -120,6 +121,54 @@ SECOND_ADDRESS = {
 def test_second_address_requires_fields(shop, product, field, error):
     """A-CHK-07: zaznaczony drugi adres wymaga ulicy, kodu pocztowego i miasta."""
     _rejected(shop, product, error, **{**SECOND_ADDRESS, field: ""})
+
+
+def test_second_address_postal_code_is_validated(shop, product):
+    """A-CHK-11: kod pocztowy drugiego adresu spoza formatu 00-000 jest odrzucany."""
+    second = {**SECOND_ADDRESS, "shipPostalCode": "00001"}
+    _rejected(shop, product, "Nieprawidłowy kod pocztowy wysyłki", **second)
+
+
+BAD_FORMATS = [
+    ("email", "abc", "Nieprawidłowy e-mail"),
+    ("email", "a@b", "Nieprawidłowy e-mail"),
+    ("postalCode", "90001", "Nieprawidłowy kod pocztowy"),
+    ("postalCode", "xyz", "Nieprawidłowy kod pocztowy"),
+    ("phone", "12345678", "Nieprawidłowy telefon"),
+    ("phone", "abc", "Nieprawidłowy telefon"),
+]
+GOOD_PHONES = ["+48 500 000 000", "500-000-000", "+48500000000"]
+
+
+@pytest.mark.parametrize(("field", "value", "error"), BAD_FORMATS)
+def test_checkout_with_invalid_format_is_rejected(shop, product, field, value, error):
+    """A-CHK-09: kasa z e-mailem, kodem pocztowym albo telefonem w złym formacie jest
+    odrzucana; koszyk zostaje."""
+    _rejected(shop, product, error, **{field: value})
+
+
+@pytest.mark.parametrize("phone", GOOD_PHONES)
+def test_checkout_accepts_phone_with_separators(shop, product, phone):
+    """A-CHK-10: kasa przyjmuje telefon z +48, spacjami albo myślnikami; koszyk pusty."""
+    assert shop.add_to_cart(product.slug).status_code == 200
+    response = shop.checkout_order(checkout_body(phone=phone))
+    assert response.status_code == 200, response.text
+    assert _cart(shop)["lines"] == []
+
+
+def test_product_hidden_after_adding_is_rejected(shop, product, db):
+    """A-CHK-12: zamówienie z produktem ukrytym po dodaniu do koszyka jest odrzucane;
+    pozycja zostaje w koszyku."""
+    assert shop.add_to_cart(product.slug).status_code == 200
+    set_hidden(db, product.slug, True)
+
+    response = shop.checkout_order(checkout_body())
+    assert response.status_code == 400
+    assert response.json() == {"error": "Produkt niedostępny"}
+    # Koszyk może pomijać ukryty produkt przy odczycie. Po ponownym pokazaniu produktu widać,
+    # czy pozycja naprawdę została.
+    set_hidden(db, product.slug, False)
+    assert [line["productSlug"] for line in _cart(shop)["lines"]] == [product.slug]
 
 
 def test_code_disabled_before_order_is_rejected(shop, product, make_discount_code, db):

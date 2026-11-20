@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from jersa.db.products import OwnProduct, delete_product, new_slug, product_row
+from jersa.db.products import OwnProduct, delete_product, new_slug, product_row, set_hidden
 
 
 def test_new_slug_is_unique_and_prefixed():
@@ -41,10 +41,16 @@ def test_own_product_price_rounds_half_up():
     assert OwnProduct("test-a", "n", 25, 10, {}).price == 23
 
 
-def test_delete_refuses_slug_without_test_prefix():
-    class NoSql:
-        def execute(self, *args, **kwargs):
-            raise AssertionError("SQL nie może się wykonać")
+class NoSql:
+    def execute(self, *args, **kwargs):
+        raise AssertionError("SQL nie może się wykonać")
 
+
+def test_delete_refuses_slug_without_test_prefix():
     with pytest.raises(ValueError, match="zakiet-castello"):
         delete_product(NoSql(), "zakiet-castello")
+
+
+def test_set_hidden_refuses_slug_without_test_prefix():
+    with pytest.raises(ValueError, match="zakiet-castello"):
+        set_hidden(NoSql(), "zakiet-castello", True)

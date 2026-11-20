@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 
 pytestmark = pytest.mark.regression
@@ -44,3 +46,17 @@ def test_wishlist_without_product_is_rejected(shop):
     response = shop.client.post("/api/commerce/wishlist", json={})
     assert response.status_code == 400
     assert response.json() == {"error": "Brak produktu"}
+
+
+@pytest.mark.parametrize("kind", ["nieistniejacy", "ukryty"])
+def test_wish_for_unknown_or_hidden_product_is_rejected(shop, make_product, kind):
+    """A-WISH-06: dodanie do przechowalni produktu, którego nie ma albo który jest ukryty,
+    jest odrzucane."""
+    if kind == "ukryty":
+        slug = make_product(hidden=True).slug
+    else:
+        slug = "test-nie-ma-" + uuid4().hex[:8]
+    response = shop.add_wish(slug)
+    assert response.status_code == 400
+    assert response.json() == {"error": "Nie znaleziono produktu"}
+    assert shop.wishlist().json()["slugs"] == []

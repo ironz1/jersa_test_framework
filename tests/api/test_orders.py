@@ -65,6 +65,39 @@ def test_order_losing_last_unit_is_rejected(make_shop, make_product):
     assert [line["quantity"] for line in _cart_lines(late)] == [1]
 
 
+BAD_FORMATS = [
+    ("email", "abc", "Nieprawidłowy e-mail"),
+    ("email", "a@b", "Nieprawidłowy e-mail"),
+    ("postalCode", "90001", "Nieprawidłowy kod pocztowy"),
+    ("postalCode", "xyz", "Nieprawidłowy kod pocztowy"),
+    ("phone", "12345678", "Nieprawidłowy telefon"),
+    ("phone", "abc", "Nieprawidłowy telefon"),
+]
+GOOD_PHONES = ["+48 500 000 000", "500-000-000", "+48500000000"]
+
+
+@pytest.mark.parametrize(("field", "value", "error"), BAD_FORMATS)
+def test_order_with_invalid_format_is_rejected(shop, product, field, value, error):
+    """A-ORD-07: zamówienie z e-mailem, kodem pocztowym albo telefonem w złym formacie jest
+    odrzucane; koszyk zostaje."""
+    shop.add_to_cart(product.slug)
+    if field == "email":
+        response = shop.create_order(email=value)
+    else:
+        response = shop.create_order(shipping={**SHIPPING, field: value})
+    assert response.status_code == 400
+    assert response.json() == {"error": error}
+    assert len(_cart_lines(shop)) == 1
+
+
+@pytest.mark.parametrize("phone", GOOD_PHONES)
+def test_order_accepts_phone_with_separators(shop, product, phone):
+    """A-ORD-08: telefon z +48, spacjami albo myślnikami jest przyjmowany."""
+    shop.add_to_cart(product.slug)
+    response = shop.create_order(shipping={**SHIPPING, "phone": phone})
+    assert response.status_code == 200, response.text
+
+
 def test_second_order_from_same_cart_is_rejected(shop, placed_order):
     """A-ORD-06: drugie zamówienie z tego samego koszyka jest odrzucane."""
     response = shop.create_order()

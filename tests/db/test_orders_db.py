@@ -5,9 +5,9 @@ from datetime import timedelta
 
 import pytest
 
-from jersa.clients.commerce import EMAIL, MADE_TO_MEASURE, SHIPPING
+from jersa.clients.commerce import EMAIL, MADE_TO_MEASURE, SHIPPING, checkout_body
 from jersa.db.orders import get_order, orders_of
-from jersa.db.products import read_stock
+from jersa.db.products import read_stock, set_hidden
 
 pytestmark = pytest.mark.regression
 
@@ -120,3 +120,22 @@ def test_rejected_order_with_several_lines_changes_nothing(db, make_shop, make_p
 
     assert [row["id"] for row in orders_of(db, mixed.slug)] == [winner_id]
     assert read_stock(db, mixed.slug) == {"36": 5, "38": 0}
+
+
+@pytest.mark.parametrize("shape", ["kasa", "stary"])
+def test_order_with_hidden_product_leaves_no_trace(db, shop, make_product, shape):
+    """D-ORD-08: zamówienie (kasa i stary kształt) z produktem ukrytym po dodaniu do koszyka
+    jest odrzucane i nie zostawia wiersza ani zmiany stanu."""
+    hidden_later = make_product(stock={"36": 3})
+    assert shop.add_to_cart(hidden_later.slug, "36").status_code == 200
+    set_hidden(db, hidden_later.slug, True)
+    if shape == "kasa":
+        response = shop.checkout_order(checkout_body())
+    else:
+        response = shop.create_order()
+    # Sam status 400 przeszedłby przy każdym innym odrzuceniu; komunikat wiąże je z ukryciem.
+    assert response.status_code == 400
+    assert response.json() == {"error": "Produkt niedostępny"}
+
+    assert orders_of(db, hidden_later.slug) == []
+    assert read_stock(db, hidden_later.slug) == {"36": 3}
