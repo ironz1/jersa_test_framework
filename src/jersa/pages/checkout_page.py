@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from playwright.sync_api import Locator, Page
 
 # Cennik dostaw z kasy sklepu (Polska). Zmiana cennika w sklepie wymaga zmiany tutaj.
-COURIER = "Kurier DPD"
+COURIER = "Kurier DPD przelew"
 COURIER_PRICE = 15
 
 # Pełna etykieta pola na stronie → klucz kupującej (jak w polu `checkout` zamówienia).
