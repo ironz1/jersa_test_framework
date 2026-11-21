@@ -109,7 +109,7 @@ def test_canceled_after_completed_stays_paid(shop, placed_order):
 
 
 def _checkout_with_code(shop, make_product, make_discount_code):
-    """Zamówienie z kasy: produkt 200 zł, kod 10%, Kurier DPD, czyli suma 195 zł."""
+    """Zamówienie z kasy: produkt 200 zł, kod 10%, Kurier DPD przelew, czyli suma 195 zł."""
     own = make_product(amount=200)
     assert shop.add_to_cart(own.slug, "36").status_code == 200
     assert shop.apply_discount(make_discount_code(kind="percent", value=10).code).status_code == 200

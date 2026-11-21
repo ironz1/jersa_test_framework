@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20",
+  "updated": "2026-11-21",
   "requirements": [
     {"id": "R1", "source": "właściciel sklepu, 2026-11-12", "text": "Szycie na miarę kosztuje +100 zł do ceny produktu. Nie ma wtedy dopłaty za rozmiar, a stan magazynowy się nie zmienia."},
     {"id": "R2", "source": "właściciel sklepu, 2026-11-12", "text": "Dopłata za rozmiar dotyczy tylko rozmiarów 50, 52, 54, 3XL, 4XL i 5XL. Kwoty ustawia admin, domyślnie 0.", "note": "Poza zakresem Etapu 3: dopłatę ustawia się w panelu admina. Sprawdzana jest tylko wartość domyślna 0 (A-CART-07)."},
@@ -26,7 +26,7 @@
     {"id": "R23", "source": "konwencja projektu (ADR-002)", "text": "Odpowiedzi API mają stały kształt opisany schematem. Nowe, usunięte albo zmienione pole to złamanie kontraktu."},
     {"id": "R24", "source": "właściciel sklepu, 2026-11-12", "text": "Klient może w przeglądarce znaleźć produkt, dodać go do koszyka, zamówić i zobaczyć status płatności."},
     {"id": "R25", "source": "spec kasy sklepu, 2026-11-17", "text": "Koszyk nie przyjmuje więcej sztuk rozmiaru, niż jest na stanie: „Dostępnych jest N szt.”, przy zerowym stanie „Brak stanu”. Szycie na miarę nie ma tego limitu."},
-    {"id": "R26", "source": "spec kasy sklepu, 2026-11-17, rozdział 3", "text": "Suma zamówienia = produkty po rabacie + cena dostawy z listy sklepu (Polska: odbiór osobisty 0 zł, Poczta Polska 14 zł, Kurier DPD 15 zł).", "note": "Sprawdzane bez kodu (E-01) i z kodem dla każdej metody dostawy (D-CHK-01, E-05)."},
+    {"id": "R26", "source": "kasa sklepu, 2026-11-21", "text": "Suma zamówienia = produkty po rabacie + cena dostawy z listy sklepu (Polska: odbiór osobisty 0 zł, Kurier DPD przelew 15 zł, Kurier DPD pobranie 20 zł).", "note": "Sprawdzane bez kodu (E-01) i z kodem dla każdej metody dostawy (D-CHK-01, E-05). Pobranie jest droższą dostawą, płatność zostaje PayU."},
     {"id": "R27", "source": "spec kasy sklepu, 2026-11-17, rozdział 3", "text": "Rabat procentowy = round(podstawa × procent / 100), połówki w górę; kwotowy = mniejsza z wartości kodu i podstawy. Podstawa to produkty po cenie sprzedaży z dopłatą za szycie na miarę, bez dostawy."},
     {"id": "R28", "source": "spec kasy sklepu, 2026-11-17, rozdziały 2, 3, 8", "text": "Kod działa bez względu na wielkość liter, koszyk pokazuje pisownię operatora. Data końca jest włącznie według Europe/Warsaw, brak daty oznacza kod bez końca. Kod nieznany, wyłączony albo po dacie jest odrzucany: „Kod jest nieprawidłowy”."},
     {"id": "R29", "source": "decyzja właściciela, 2026-11-19; spec kasy sklepu, rozdział 2", "text": "Na koszyku jest jeden kod: pusty kod zdejmuje rabat, nowy zastępuje poprzedni, a zły kod zostawia poprzedni dobry kod z rabatem."},

@@ -28,11 +28,15 @@ BUYER = {
     "city": "Łódź",
 }
 # Metody dostawy kasy (Polska) i ich ceny w złotych, z listy sklepu.
-SHIPPING_METHODS = {"odbior-osobisty": 0, "poczta-polska": 14, "kurier-dpd": 15}
+SHIPPING_METHODS = {
+    "odbior-osobisty": 0,
+    "kurier-dpd": 15,
+    "kurier-dpd-pobranie": 20,
+}
 
 
 def checkout_body(**overrides: object) -> dict[str, object]:
-    """Pełne poprawne pole `checkout` zamówienia: osoba prywatna z Polski, Kurier DPD,
+    """Pełne poprawne pole `checkout` zamówienia: osoba prywatna z Polski, Kurier DPD przelew,
     regulamin zaakceptowany. Test nadpisuje tylko to, co sprawdza."""
     body: dict[str, object] = {
         **BUYER,

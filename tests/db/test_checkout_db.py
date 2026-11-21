@@ -76,7 +76,7 @@ def test_checkout_snapshot(db, shop, make_product, make_discount_code):
         "notes": "Obwód w pasie 70 cm",
         "termsAccepted": True,
         "shippingMethodId": "kurier-dpd",
-        "shippingMethodName": "Kurier DPD",
+        "shippingMethodName": "Kurier DPD przelew",
         "shippingPrice": 15,
         "discountCode": discount.code,
         "discountAmount": 20,
