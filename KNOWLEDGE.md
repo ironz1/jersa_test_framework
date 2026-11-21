@@ -283,6 +283,7 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 **Wyniki**
 - Sklep z drzewa roboczego gałęzi na pustej bazie: stary healthcheck pada (wyszukiwarka „castello” zwraca pustą listę), nowy przechodzi. Na samej gałęzi sklepu pada 39 testów kroku B, bo gałąź odeszła od `main` przed poprawką walidacji; agent sklepu ma wciągnąć `main`. Ta sama kopia z nałożoną poprawką: 287 passed dwa razy z rzędu.
+- Agent sklepu wciągnął `main`; bramka na PR-ze sklepu (#6) z testami z tej gałęzi: 287 passed. Scalone 2026-11-20: najpierw sklep, potem testy (PR #7). Lokalnie na `main` sklepu od zimnego startu: 287 passed.
 
 **Czego się nauczyłem**
 - Prawdziwe dane mają pułapki, których nie ma w danych pokazowych: dwa produkty o tej samej nazwie, podwójna spacja w nazwie, polecane produkty z własnym serduszkiem na stronie produktu. Lokator po samej nazwie przestaje wskazywać jeden element.
