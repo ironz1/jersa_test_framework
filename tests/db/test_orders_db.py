@@ -37,6 +37,7 @@ def test_order_row_matches_request(db, shop, product):
             "quantity": 2,
             "customFit": False,
             "sizeSurcharge": 0,
+            "unitAmount": product.price,
         }
     ]
     assert row["total"] == product.price * 2
