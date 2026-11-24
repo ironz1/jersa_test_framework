@@ -306,6 +306,20 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 - Lokator po fragmencie etykiety przestaje być jednoznaczny, gdy dochodzi opcja o podobnej nazwie. „Kurier DPD” trafiał w dwa radia, więc lokator używa pełnej nazwy metody.
 - Zmiana nazwy przy tym samym id psuje tylko te testy, które czytają nazwę (odpis zamówienia w bazie, radio w E2E). Testy API, które posługują się id, nie wymagały zmian (poza opisami w docstringach).
 
+### Cena sztuki i numer zamówienia — 2026-11-24
+
+**Co powstało**
+- Gałąź `feat/dostawa-800-pozycje` w parze z gałęzią sklepu (PR #14 sklepu). Sklep zapisuje w każdej pozycji `linesJson` cenę jednej sztuki w chwili zakupu (`unitAmount`: cena po promocji, plus dopasowanie i dopłata rozmiaru, bez rabatu z kodu). D-ORD-01 porównuje całą pozycję, więc dostał to pole w oczekiwaniu.
+- Ta sama gałąź sklepu nadaje zamówieniom krótki numer (`OrderRow.number`, unikat). Pełny przebieg testów na 4 procesach wykrył, że dwa równoległe zamówienia dostają ten sam numer (problem w sekcji 6). Agent sklepu dodał blokadę w Postgresie i ponowienie przy kolizji. Nowego testu nie trzeba było: wykryły to istniejące testy zamówień, bo idą równolegle.
+
+**Wyniki**
+- Przed poprawką sklepu, `-n 4`: 3 failed + 1 error, potem 3 failed + 3 errors, za każdym razem inne testy; `-n 0`: 287 passed.
+- Po poprawce: `-n 4` trzy razy z rzędu 287 passed, `-n 0` 287 passed; bramka na PR #14 sklepu z gałęzią testów: 287 passed.
+
+**Czego się nauczyłem**
+- Równoległe testy to darmowy test obciążeniowy: cztery procesy składające zamówienia naraz trafiły w wyścig, którego nie widać przy jednym procesie.
+- Jeden zielony przebieg bramki nie dowodzi braku wyścigu. Błąd zależny od czasu trzeba sprawdzać kilkoma przebiegami.
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -773,6 +787,20 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Rozwiązanie:** `git -c core.longpaths=true worktree add --detach <ścieżka> origin/main` i `STOREFRONT_PATH=<ścieżka>` przy `docker compose up`, bez przełączania gałęzi w kopii roboczej sklepu.
 - **Jak zapobiec:** na Windows ustawić `git config --global core.longpaths true` albo trzymać worktree w krótkiej ścieżce.
 - **Na rozmowie:** Żeby nie ruszać czyjejś pracy w repo aplikacji, zbudowałem środowisko z osobnej kopii czystego `main`. Windows odrzucił za długie ścieżki plików, więc włączyłem w Gicie obsługę długich ścieżek.
+
+### Dwa równoległe zamówienia dostają ten sam numer (2026-11-24)
+- **Objaw:** na 4 procesach losowe testy zamówień padały z `Unique constraint failed on the fields: (number)`; na jednym procesie wszystko przechodziło. Bramka na PR-ze sklepu trafiła raz tylko na inny, oczekiwany błąd.
+- **Przyczyna:** sklep liczył numer jako największy numer w bazie + 1. Dwie transakcje czytały to samo maksimum, bo transakcja w Postgresie (READ COMMITTED) nie blokuje odczytu, i druga łamała unikat.
+- **Rozwiązanie:** w sklepie (agent sklepu): blokada `pg_advisory_xact_lock` na czas nadawania numeru i ponowienie przy kolizji; trasa zamówień nie zwraca już klientowi surowego komunikatu Prismy. Po stronie testów bez zmian, sprawdzenie: trzy przebiegi `-n 4` i jeden `-n 0`, wszystkie 287 passed.
+- **Jak zapobiec:** testy zamówień zawsze puszczać równolegle (domyślne `-n 4`, ADR-015), a błąd zależny od czasu potwierdzać kilkoma przebiegami, nie jednym.
+- **Na rozmowie:** Moje testy idą na czterech procesach, więc składają zamówienia naraz. Dzięki temu wykryły, że dwa zamówienia w tej samej chwili dostają ten sam numer, czego nie widać przy jednym procesie. Pokazałem to porównaniem przebiegów równoległych i sekwencyjnych.
+
+### Dysk C: pełny w trakcie budowania obrazu (2026-11-24)
+- **Objaw:** `docker compose up --build` przerwany, Docker przestał odpowiadać, na C: 0 MB wolnego.
+- **Przyczyna:** każda przebudowa sklepu zostawia obraz bez nazwy i warstwy w pamięci podręcznej buildów; po wielu przebudowach było ich ponad 20 GB w dysku Dockera.
+- **Rozwiązanie:** usunięcie starych kopii sklepu z katalogu tymczasowego, potem `docker image prune -f` i `docker builder prune -f` (obrazy w użyciu i wolumeny zostają).
+- **Jak zapobiec:** co jakiś czas `docker system df` i czyszczenie po serii przebudów; plik dysku Dockera na Windows sam się nie zmniejsza, trzeba go skompaktować.
+- **Na rozmowie:** Po kilkudziesięciu przebudowach obrazu zabrakło miejsca na dysku. Wyczyściłem nieużywane obrazy i pamięć podręczną buildów Dockera, a teraz sprawdzam zajętość po serii przebudów.
 ---
 
 ## 7. Zarządzanie frameworkiem
@@ -881,6 +909,7 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 43. **Dopisz testy walidacji wejścia dopiero po poprawce sklepu** — ilość, produkt, rozmiar, format danych, ukryty produkt, uszkodzony JSON; bramka pilnuje ich od teraz na każdym PR-ze sklepu (ADR-014).
 44. **Trzymaj założenia o seedzie w jednym pliku** — seed sklepu przestał wstawiać produkty podglądu; testy czytające seed i healthcheck przeszły na `sukienka-stella` ze stałych w `src/jersa/seed.py`.
 45. **Po zmianie listy w aplikacji zmień dane testów w jednym miejscu** — nowe metody dostawy weszły przez `SHIPPING_METHODS`, a parametryzacja sama dała przypadek dla pobrania.
+46. **Potwierdzaj błąd zależny od czasu kilkoma przebiegami równoległymi i jednym sekwencyjnym** — tak wyszła kolizja numerów zamówień w sklepie; D-ORD-01 dostał przy tym cenę sztuki `unitAmount`.
 
 ---
 
@@ -1154,6 +1183,11 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Odpowiedź:** listę trzymam w jednym słowniku w kodzie frameworka, a test parametryzuję wprost z niego: `@pytest.mark.parametrize(("method", "price"), list(SHIPPING_METHODS.items()))`. Gdy sklep usunął jedną metodę dostawy i dodał nową, zmieniłem tylko słownik. Pytest sam przestał generować przypadek dla starej metody i dodał przypadek dla nowej.
 - **Uwaga:** słownik w testach to oczekiwana wartość z wymagań, a nie kopia odczytana z kodu sklepu. Gdyby test pobierał ceny z API sklepu, nie wykryłby złej ceny.
 - **Dowód:** `src/jersa/clients/commerce.py` (`SHIPPING_METHODS`), `tests/db/test_checkout_db.py` (D-CHK-01), R26.
+
+### Jak wykrywasz błędy współbieżności w bazie?
+- **Odpowiedź:** testy idą równolegle na czterech procesach (pytest-xdist), każdy na własnych danych, więc zamówienia składają się naraz jak u prawdziwych klientów. Gdy sklep zaczął nadawać numer zamówienia jako „największy + 1”, losowe testy padały na unikacie, a na jednym procesie wszystko przechodziło. Porównanie `-n 4` z `-n 0` wskazało wyścig, a nie błąd w danych.
+- **Uwaga:** taki błąd nie wychodzi za każdym razem. Jeden zielony przebieg nic nie dowodzi, poprawkę potwierdziłem trzema przebiegami równoległymi. Przyczyna była w bazie: transakcja na poziomie READ COMMITTED nie blokuje odczytu maksimum; pomaga blokada albo sekwencja.
+- **Dowód:** `-n 4` w `addopts` (ADR-015), D-ORD-01 i testy kasy w `tests/db/`, sekcja 6 „Dwa równoległe zamówienia dostają ten sam numer”.
 
 ---
 
