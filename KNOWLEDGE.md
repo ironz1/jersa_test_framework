@@ -291,6 +291,21 @@ To samo co na Vercelu: `node scripts/prepare-database.mjs` (rewrite providera + 
 
 **Projekt:** [`docs/superpowers/specs/2026-11-20-seed-live-catalog-design.md`](docs/superpowers/specs/2026-11-20-seed-live-catalog-design.md)
 
+### Teksty frontu i dostawa DPD — 2026-11-21 → 2026-11-24
+
+**Co powstało**
+- Gałąź `feat/teksty-frontu` w parze z gałęzią sklepu (`a4c7130`, scalona do `main` sklepu jako PR #9). Z kasy zniknęła Poczta Polska (14 zł), „Kurier DPD” zmienił nazwę na „Kurier DPD przelew” (id i cena 15 zł bez zmian), doszedł „Kurier DPD pobranie” (`kurier-dpd-pobranie`, 20 zł). Pobranie to tylko droższa dostawa, płatność dalej idzie przez PayU.
+- Framework: `SHIPPING_METHODS` z nową listą (D-CHK-01 jest parametryzowany po tej liście, więc pobranie dostało swój przypadek bez nowego kodu testu), stała `COURIER = "Kurier DPD przelew"` w `CheckoutPage`, nazwa w `checkoutJson` w teście bazy. Wymaganie R26 z nową listą cen w macierzy.
+- Zmiany tekstów na `/promocje`, `/blog`, `/o-nas` i `/kontakt` nie ruszyły żadnego testu: testy nie sprawdzały tych napisów.
+
+**Wyniki**
+- Bramka lokalnie na czystym `main` sklepu (`0a307e6`, czyli zmiana dostawy i przekierowania starych adresów z PR #10), od zimnego startu po `down -v`: 287 passed dwa razy z rzędu (15,4 s i 12,3 s na 4 procesach). Po przebiegach w bazie nie zostaje żaden produkt ani kod `test-`; ruff czysty.
+- Macierz śledzenia przebudowana (R26 z nową listą dostaw).
+
+**Czego się nauczyłem**
+- Lokator po fragmencie etykiety przestaje być jednoznaczny, gdy dochodzi opcja o podobnej nazwie. „Kurier DPD” trafiał w dwa radia, więc lokator używa pełnej nazwy metody.
+- Zmiana nazwy przy tym samym id psuje tylko te testy, które czytają nazwę (odpis zamówienia w bazie, radio w E2E). Testy API, które posługują się id, nie wymagały zmian (poza opisami w docstringach).
+
 <!--
 ### Etap N — <data rozpoczęcia> → <data zakończenia>
 - **Zrobione:**
@@ -751,6 +766,13 @@ Format: **zasada → dlaczego → przykład z mojego kodu**.
 - **Rozwiązanie:** wynik wyszukiwania po dokładnym adresie `/produkt/<slug>` i nazwie; serduszko produktu jako jedyne poza linkiem karty; wzorzec nazwy przyjmuje dowolny odstęp (`name_pattern`). Sprawdzone sondą DOM przed zmianą lokatorów.
 - **Jak zapobiec:** element, który ma być jeden, wskazywać po czymś unikalnym (slug, adres, obszar strony), nie po tekście, który powtarza się w danych.
 - **Na rozmowie:** Po zmianie danych startowych dwa produkty miały tę samą nazwę i test kliknięcia trafiał w dwa elementy. Zmieniłem lokator na adres produktu, bo nazwa nie jest unikalna, a slug jest.
+
+### `git worktree add` sklepu pada na długiej ścieżce (2026-11-24)
+- **Objaw:** `fatal: cannot create directory at 'docs/design/stitch_jersa_atelier_storefront_prototype/...': Filename too long` przy zakładaniu worktree sklepu w katalogu tymczasowym.
+- **Przyczyna:** kopia robocza sklepu była na innej gałęzi z niezapisanymi zmianami, więc do bramki potrzebny był osobny worktree czystego `main`. Windows domyślnie ogranicza ścieżkę do 260 znaków, a długi katalog tymczasowy plus głęboko zagnieżdżone pliki projektu graficznego sklepu przekraczają ten limit.
+- **Rozwiązanie:** `git -c core.longpaths=true worktree add --detach <ścieżka> origin/main` i `STOREFRONT_PATH=<ścieżka>` przy `docker compose up`, bez przełączania gałęzi w kopii roboczej sklepu.
+- **Jak zapobiec:** na Windows ustawić `git config --global core.longpaths true` albo trzymać worktree w krótkiej ścieżce.
+- **Na rozmowie:** Żeby nie ruszać czyjejś pracy w repo aplikacji, zbudowałem środowisko z osobnej kopii czystego `main`. Windows odrzucił za długie ścieżki plików, więc włączyłem w Gicie obsługę długich ścieżek.
 ---
 
 ## 7. Zarządzanie frameworkiem
@@ -858,6 +880,7 @@ Plików `scripts/build_traceability.py` i `src/jersa/traceability.py` przy dodaw
 42. **Zaloguj się do panelu tak jak operator, raz na proces** — formularz w przeglądarce, ciasteczko do testów API (ADR-017).
 43. **Dopisz testy walidacji wejścia dopiero po poprawce sklepu** — ilość, produkt, rozmiar, format danych, ukryty produkt, uszkodzony JSON; bramka pilnuje ich od teraz na każdym PR-ze sklepu (ADR-014).
 44. **Trzymaj założenia o seedzie w jednym pliku** — seed sklepu przestał wstawiać produkty podglądu; testy czytające seed i healthcheck przeszły na `sukienka-stella` ze stałych w `src/jersa/seed.py`.
+45. **Po zmianie listy w aplikacji zmień dane testów w jednym miejscu** — nowe metody dostawy weszły przez `SHIPPING_METHODS`, a parametryzacja sama dała przypadek dla pobrania.
 
 ---
 
@@ -1126,6 +1149,11 @@ Pytania, które mogą paść, i odpowiedź oparta na **moim** frameworku (z link
 - **Odpowiedź:** najpierw sprawdzam, które testy w ogóle polegają na seedzie. U mnie są to tylko testy „seed przeszedł”: wyszukiwarka, strona produktu, przechowalnia i healthcheck. Testy zamówień i opinii tworzą własny produkt, więc zmiana seeda ich nie dotyka. Założenia o seedzie (slug, nazwa, fraza) trzymam w jednym pliku, więc przy zmianie poprawiam jedno miejsce i sprawdzam całość na pustej bazie.
 - **Uwaga:** nowe dane mają swoje pułapki: dwa produkty o tej samej nazwie i podwójna spacja w nazwie. E2E wybiera więc wynik po slugu, a wzorzec nazwy przyjmuje dowolny odstęp.
 - **Dowód:** `src/jersa/seed.py`, `src/jersa/pages/names.py`, ADR-012.
+
+### Jak sprawić, żeby zmiana listy w aplikacji wymagała jednej poprawki w testach?
+- **Odpowiedź:** listę trzymam w jednym słowniku w kodzie frameworka, a test parametryzuję wprost z niego: `@pytest.mark.parametrize(("method", "price"), list(SHIPPING_METHODS.items()))`. Gdy sklep usunął jedną metodę dostawy i dodał nową, zmieniłem tylko słownik. Pytest sam przestał generować przypadek dla starej metody i dodał przypadek dla nowej.
+- **Uwaga:** słownik w testach to oczekiwana wartość z wymagań, a nie kopia odczytana z kodu sklepu. Gdyby test pobierał ceny z API sklepu, nie wykryłby złej ceny.
+- **Dowód:** `src/jersa/clients/commerce.py` (`SHIPPING_METHODS`), `tests/db/test_checkout_db.py` (D-CHK-01), R26.
 
 ---
 
